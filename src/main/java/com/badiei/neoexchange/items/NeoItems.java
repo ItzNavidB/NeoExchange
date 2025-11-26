@@ -1,85 +1,72 @@
 package com.badiei.neoexchange.items;
 
 import com.badiei.neoexchange.NeoExchange;
+import com.badiei.neoexchange.economy.NeoStoneType;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.Rarity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.function.Consumer;
 
 public class NeoItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(NeoExchange.MOD_ID);
 
+
+
+
     // Original Neo Stone - keeping this for now (maybe for testing or crafting material)
-    public static final DeferredItem<Item> NEO_STONE = ITEMS.registerItem("neo_stone", Item::new, new Item.Properties());
+    public static final DeferredItem<Item> NEO_STONE = ITEMS.registerItem("neo_stone",
+            (properties) -> new Item(properties) {
+                @Override
+                public @NotNull Component getName(@NotNull ItemStack item) {
+                    return this.getName();
+                }
+
+                @Override
+                public void appendHoverText(ItemStack stack, TooltipContext context, TooltipDisplay tooltipDisplay, Consumer<Component> tooltipAdder, TooltipFlag flag) {
+                    super.appendHoverText(stack, context, tooltipDisplay, tooltipAdder, flag);
+                    tooltipAdder.accept(Component.literal("The key stone to Neo Exchange").withStyle(ChatFormatting.ITALIC).withStyle(ChatFormatting.GRAY));
+                }
+            }
+
+    );
 
     // ========== THE FIVE TIER STONES ==========
-    
-    /**
-     * Tier 1: Common Stone
-     * Access: EMC 0-256 (basic items)
-     * Crafting: 4 Iron + 4 Coal + 1 Redstone
-     */
-    public static final DeferredItem<Item> COMMON_STONE = ITEMS.registerItem("common_stone", 
-        Item::new, 
-        new Item.Properties()
-            .rarity(Rarity.COMMON)  // White text
-            .stacksTo(1)            // Can only carry 1 at a time (like a tool)
-    );
+    // Each stone uses our custom NeoStoneItem class with colored names and special properties
 
     /**
-     * Tier 2: Uncommon Stone
-     * Access: EMC 257-1,024 (iron-tier items)
-     * Crafting: 4 Gold + 4 Redstone Blocks + 1 Common Stone
+     * TIER 1: COMMON STONE (White/Gray)
+     * - Max EMC: 256
+     * - Access: Basic items only
+     * - No special features
+     * - Crafting: 4 Iron + 4 Coal + 1 Redstone
      */
-    static String uncommon = "uncommon_stone";
-    public static final DeferredItem<Item> UNCOMMON_STONE = ITEMS.registerItem(uncommon,
-        Item::new, 
-        new Item.Properties()
-            .rarity(Rarity.UNCOMMON)  // Green text
-            .stacksTo(1)
-                .overrideDescription(Component.translatable("item.neoexchange." + uncommon).getString())
+    public static final DeferredItem<NeoStoneItem> COMMON_STONE = ITEMS.registerItem("common_stone",
+        properties -> new NeoStoneItem(properties, NeoStoneType.COMMON)
     );
-    /**
-     * Tier 3: Rare Stone
-     * Access: EMC 1,025-4,096 (gold/diamond tier)
-     * Crafting: 4 Diamonds + 4 Ender Pearls + 1 Uncommon Stone
-     */
-    public static final DeferredItem<Item> RARE_STONE = ITEMS.registerItem("rare_stone", 
-        Item::new, 
-        new Item.Properties()
-            .rarity(Rarity.RARE)  // Blue text
-            .stacksTo(1)
+    public static final DeferredItem<NeoStoneItem> UNCOMMON_STONE = ITEMS.registerItem("uncommon_stone",
+        properties -> new NeoStoneItem(properties, NeoStoneType.UNCOMMON)
     );
-
-    /**
-     * Tier 4: Epic Stone
-     * Access: EMC 4,097-16,384 (high-tier items)
-     * Crafting: 4 Netherite Ingots + 1 Nether Star + 1 Rare Stone
-     */
-    public static final DeferredItem<Item> EPIC_STONE = ITEMS.registerItem("epic_stone", 
-        Item::new, 
-        new Item.Properties()
-            .rarity(Rarity.EPIC)  // Purple text
-            .stacksTo(1)
+    public static final DeferredItem<NeoStoneItem> RARE_STONE = ITEMS.registerItem("rare_stone",
+        properties -> new NeoStoneItem(properties, NeoStoneType.RARE)
     );
-
-    /**
-     * Tier 5: Legendary Stone
-     * Access: Unlimited EMC + special features
-     * Crafting: 4 Nether Stars + 4 Netherite Blocks + 1 Dragon Egg (returns) + 1 Epic Stone
-     */
-    public static final DeferredItem<Item> LEGENDARY_STONE = ITEMS.registerItem("legendary_stone", 
-        Item::new, 
-        new Item.Properties()
-            .rarity(Rarity.EPIC)  // Purple text (Minecraft doesn't have orange rarity)
-            .stacksTo(1)
-            .fireResistant()      // Can't burn in lava - it's legendary!
+    public static final DeferredItem<NeoStoneItem> EPIC_STONE = ITEMS.registerItem("epic_stone",
+        properties -> new NeoStoneItem(properties, NeoStoneType.EPIC)
+    );
+    public static final DeferredItem<NeoStoneItem> LEGENDARY_STONE = ITEMS.registerItem("legendary_stone",
+        properties -> new NeoStoneItem(properties.fireResistant(), NeoStoneType.LEGENDARY)
+    );
+    public static final DeferredItem<NeoStoneItem> MYTHIC_STONE = ITEMS.registerItem("mythic_stone",
+        properties -> new NeoStoneItem(properties.fireResistant(), NeoStoneType.MYTHIC)
     );
 
     public static void register(IEventBus eventBus) {

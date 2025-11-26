@@ -1,6 +1,18 @@
 package com.badiei.neoexchange.economy;
 
+import com.badiei.neoexchange.NeoExchange;
+import com.badiei.neoexchange.emc.EMCHelper;
+import net.minecraft.ChatFormatting;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.Rarity;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.item.ItemEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+
+import java.util.Optional;
 
 /**
  * Enum representing the five tiers of Neo Stones.
@@ -12,28 +24,22 @@ import net.minecraft.world.item.Rarity;
  * We can't create new NeoStoneType values at runtime - these 5 are it!
  */
 public enum NeoStoneType {
+
     // Each line here creates ONE constant of this enum type
     // The numbers in parentheses are passed to the constructor below
-    
-    COMMON(1, "Common Stone", 256, Rarity.COMMON),
-    //  ↑    ↑        ↑          ↑         ↑
-    //  |    |        |          |         └─ Minecraft's built-in rarity (for text color)
-    //  |    |        |          └─ Max EMC value this tier can access
-    //  |    |        └─ Display name shown to players
-    //  |    └─ Tier number (1-5)
-    //  └─ The constant name (we use this in code)
-    
-    UNCOMMON(2, "Uncommon Stone", 1024, Rarity.UNCOMMON),
-    RARE(3, "Rare Stone", 4096, Rarity.RARE),
-    EPIC(4, "Epic Stone", 16384, Rarity.EPIC),
-    LEGENDARY(5, "Legendary Stone", Integer.MAX_VALUE, Rarity.EPIC);  // No limit!
-    
+    COMMON(1, "Common Stone", 256, ChatFormatting.GRAY),
+    UNCOMMON(2, "Uncommon Stone", 1024, ChatFormatting.GREEN),
+    RARE(3, "Rare Stone", 4096, ChatFormatting.AQUA),
+    EPIC(4, "Epic Stone", 16384, ChatFormatting.LIGHT_PURPLE),
+    LEGENDARY(5, "Legendary Stone", 50148, ChatFormatting.GOLD),  // No limit!
+    MYTHIC(6, "Mythic Stone", Integer.MAX_VALUE, ChatFormatting.DARK_RED);  // Even further to no limit!
+
     // These are the fields that EVERY enum constant has
     // Think of these as properties that each stone type stores
     private final int tier;
     private final String displayName;
     private final int maxEMC;
-    private final Rarity rarity;
+    private final ChatFormatting color;
     
     /**
      * Constructor - This runs for EACH enum constant when the program starts
@@ -41,23 +47,25 @@ public enum NeoStoneType {
      * When Java sees "COMMON(1, "Common Stone", 256, Rarity.COMMON)" above,
      * it calls this constructor with those values.
      * 
-     * @param tier The tier level (1-5)
+     * @param tier The tier level (1-6)
      * @param displayName The human-readable name
      * @param maxEMC Maximum EMC value this tier can access
-     * @param rarity Minecraft rarity (affects text color)
+     * @param color Maximum EMC value this tier can access
      */
-    NeoStoneType(int tier, String displayName, int maxEMC, Rarity rarity) {
+    NeoStoneType(int tier, String displayName, int maxEMC, ChatFormatting color) {
         // "this.tier" = THIS enum constant's tier field
         // "tier" = the parameter passed in
         this.tier = tier;
         this.displayName = displayName;
-        this.maxEMC = maxEMC;
-        this.rarity = rarity;
+        //this.maxEMC = maxEMC;
+        this.maxEMC = getMaxEMC(maxEMC);
+        this.color = color;
+
     }
     
     /**
      * Get the tier number of this stone type
-     * @return 1-5 depending on which tier this is
+     * @return 1-6 depending on which tier this is
      */
     public int getTier() {
         return this.tier;
@@ -80,14 +88,22 @@ public enum NeoStoneType {
     public int getMaxEMC() {
         return this.maxEMC;
     }
+
+    public int getMaxEMC(int defaultValue) {
+        return switch(this) {
+            case COMMON -> defaultValue;
+            case UNCOMMON -> defaultValue;
+            case RARE -> EMCHelper.getItemEMC(Items.DIAMOND).orElse((long) defaultValue).intValue();
+            case EPIC -> EMCHelper.getItemEMC(Items.EMERALD).orElse((long) defaultValue).intValue();
+            case LEGENDARY -> EMCHelper.getItemEMC(Items.NETHERITE_INGOT).orElse((long) defaultValue).intValue();
+            case MYTHIC -> defaultValue;
+        };
+    }
     
     /**
      * Get the Minecraft rarity (used for text coloring)
      * @return Rarity enum value (COMMON = white, UNCOMMON = green, etc.)
      */
-    public Rarity getRarity() {
-        return this.rarity;
-    }
     
     /**
      * Check if this stone type can access an item with the given EMC value
@@ -151,7 +167,7 @@ public enum NeoStoneType {
      * - fromTier(5) → LEGENDARY
      * - fromTier(99) → null
      * 
-     * @param tier The tier number (1-5)
+     * @param tier The tier number (1-6)
      * @return The corresponding stone type, or null if invalid
      */
     public static NeoStoneType fromTier(int tier) {
@@ -163,4 +179,6 @@ public enum NeoStoneType {
         }
         return null;  // Invalid tier number
     }
+
+    public ChatFormatting getColor() {return this.color;}
 }

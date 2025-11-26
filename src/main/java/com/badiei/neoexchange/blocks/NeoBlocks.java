@@ -1,6 +1,7 @@
 package com.badiei.neoexchange.blocks;
 
 import com.badiei.neoexchange.NeoExchange;
+import com.badiei.neoexchange.blocks.custom.NeoPlateTemplate;
 import com.badiei.neoexchange.items.NeoItems;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
