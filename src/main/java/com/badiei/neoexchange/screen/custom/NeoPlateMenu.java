@@ -4,6 +4,7 @@ import com.badiei.neoexchange.blocks.NeoBlocks;
 import com.badiei.neoexchange.blocks.entity.NeoPlateEntity;
 import com.badiei.neoexchange.datagen.ModTags;
 import com.badiei.neoexchange.economy.NeoStoneType;
+import com.badiei.neoexchange.emc.EMCRegistry;
 import com.badiei.neoexchange.items.NeoItems;
 import com.badiei.neoexchange.items.NeoStoneItem;
 import com.badiei.neoexchange.screen.ModMenuTypes;
@@ -39,14 +40,31 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         this.blockEntity = ((NeoPlateEntity) blockEntity);
         this.level = inv.player.level();
 
-        addPlayerInventory(inv);
-        addPlayerHotbar(inv);
-        this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 0, 8, 13) {
+        addPlayerInventory(inv, 27, 33);
+        addPlayerHotbar(inv, 27, 33);
+        //Stones Item Slot
+        this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 0, 43, 49) {
             @Override
             public boolean mayPlace(ItemStack stack) {
                 boolean allowed = stack.is(ModTags.Items.USEABLE_STONES);
                 LOGGER.info("Checking {} -> allowed: {}", stack.getItem().getName(), allowed);
                 LOGGER.info("Checking for tag: {}", ModTags.Items.USEABLE_STONES);
+                return allowed;
+            }
+        });
+        //Burner Item Slot
+        this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 1, 107, 97) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                boolean allowed = EMCRegistry.getItemsWithEMC().contains(stack.getItem());
+                return allowed;
+            }
+        });
+        //Unlearn Item Slot
+        this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 2, 89, 97) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                boolean allowed = EMCRegistry.getItemsWithEMC().contains(stack.getItem());
                 return allowed;
             }
         });
@@ -61,7 +79,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     private static final int VANILLA_FIRST_SLOT_INDEX = 0;
     private static final int TE_INVENTORY_FIRST_SLOT_INDEX = VANILLA_FIRST_SLOT_INDEX + VANILLA_SLOT_COUNT;
 
-    private static final int TE_INVENTORY_SLOT_COUNT = 1;  // must be the number of slots you have!
+    private static final int TE_INVENTORY_SLOT_COUNT = 3;  // must be the number of slots you have!
 
 
     @Override
@@ -70,17 +88,12 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         if (sourceSlot == null || !sourceSlot.hasItem()) return ItemStack.EMPTY;  //EMPTY_ITEM
         ItemStack sourceStack = sourceSlot.getItem();
         ItemStack copyOfSourceStack = sourceStack.copy();
-        if (!(sourceSlot.getSlotIndex() == TE_INVENTORY_FIRST_SLOT_INDEX)) {
-            if (!(sourceStack.getItem() instanceof NeoStoneItem)) {
-                return ItemStack.EMPTY;
-            }
-        }
 
         // Check if the slot clicked is one of the vanilla container slots
         if (pIndex < VANILLA_FIRST_SLOT_INDEX + VANILLA_SLOT_COUNT) {
             // This is a vanilla container slot so merge the stack into the tile inventory
             if (!moveItemStackTo(sourceStack, TE_INVENTORY_FIRST_SLOT_INDEX, TE_INVENTORY_FIRST_SLOT_INDEX
-                    + TE_INVENTORY_SLOT_COUNT, false)) {
+                    + TE_INVENTORY_SLOT_COUNT - 1, false)) {
                 return ItemStack.EMPTY;  // EMPTY_ITEM
             }
         } else if (pIndex < TE_INVENTORY_FIRST_SLOT_INDEX + TE_INVENTORY_SLOT_COUNT) {
@@ -110,17 +123,22 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         return stillValid(ContainerLevelAccess.create(level, blockEntity.getBlockPos()), player, NeoBlocks.NEO_PLATE.get());
     }
 
-    private void addPlayerInventory(Inventory playerInventory) {
+    private void addPlayerInventory(Inventory playerInventory, int x, int y) {
         for (int i = 0; i < 3; ++i) {
             for (int l = 0; l < 9; ++l) {
-                this.addSlot(new Slot(playerInventory, l + i * 9 + 9, 8 + l * 18, 84 + i * 18));
+                this.addSlot(new Slot(playerInventory, l + i * 9 + 9, 8 + l * 18 + x, 84 + i * 18 + y));
             }
         }
     }
 
-    private void addPlayerHotbar(Inventory playerInventory) {
+    private void addPlayerHotbar(Inventory playerInventory, int x, int y) {
         for (int i = 0; i < 9; ++i) {
-            this.addSlot(new Slot(playerInventory, i, 8 + i * 18, 142));
+            this.addSlot(new Slot(playerInventory, i, 8 + i * 18 + x, 142 + y));
         }
     }
+
+    public static int getSlotSize() {
+        return TE_INVENTORY_SLOT_COUNT;
+    }
+    public int getContainerSize() {return this.blockEntity.getContainerSize();}
 }

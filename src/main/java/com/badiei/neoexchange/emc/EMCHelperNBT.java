@@ -1,17 +1,12 @@
 package com.badiei.neoexchange.emc;
 
-import net.minecraft.client.Minecraft;
+import com.mojang.logging.LogUtils;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.entity.EntityLookup;
-import net.minecraft.world.level.entity.UUIDLookup;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
-import com.mojang.logging.LogUtils;
 
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * EMCHelper - Utility class for EMC operations
@@ -23,33 +18,29 @@ import java.util.UUID;
  * All methods are static - you don't create an instance of this class,
  * you just call EMCHelper.methodName()
  */
-public class EMCHelper {
+public class EMCHelperNBT {
     private static final Logger LOGGER = LogUtils.getLogger();
-
-
-    /**
-     * Get a player's EMC data attachment
-     *
-     * @param player The player
-     * @return The player's EMC data
-     */
-    public static PlayerEMCData getPlayerEMC(Player player) {
-        return player.getData(NeoAttachments.PLAYER_EMC);
-    }
+    private static final String NBT_KEY = "emc_balance";
 
     /**
      * Get a player's current EMC balance
      * Convenience method to avoid getPlayerEMC(player).getEMC()
      */
-    public static long getBalance(Player player) {
-        return getPlayerEMC(player).getEMC();
+    public static long getEMC(Player player) {
+        if (player.getPersistentData().getLong(NBT_KEY).isPresent()) {
+            return player.getPersistentData().getLong(NBT_KEY).get();
+        }
+        else {
+            setEMC(player,0);
+            return player.getPersistentData().getLong(NBT_KEY).get();
+        }
     }
 
     /**
      * Set a player's EMC balance
      */
-    public static void setBalance(Player player, long amount) {
-        getPlayerEMC(player).setEMC(amount);
+    public static void setEMC(Player player, long amount) {
+        player.getPersistentData().putLong(NBT_KEY, amount);
     }
 
     /**
@@ -58,7 +49,9 @@ public class EMCHelper {
      * @return true if successful
      */
     public static boolean addEMC(Player player, long amount) {
-        return getPlayerEMC(player).addEMC(amount);
+        long current = getEMC(player);
+        setEMC(player, current + amount);
+        return true;
     }
 
     /**
@@ -67,14 +60,16 @@ public class EMCHelper {
      * @return true if successful (enough EMC available)
      */
     public static boolean removeEMC(Player player, long amount) {
-        return getPlayerEMC(player).removeEMC(amount);
+        long current = getEMC(player);
+        setEMC(player, current - amount);
+        return true;
     }
 
     /**
      * Check if a player has at least this much EMC
      */
     public static boolean hasEMC(Player player, long amount) {
-        return getPlayerEMC(player).hasEMC(amount);
+        return getEMC(player) >= amount;
     }
 
     /**
@@ -156,7 +151,7 @@ public class EMCHelper {
             LOGGER.debug("Player {} does not have enough EMC (needs {}, has {})",
                     player.getName().getString(),
                     totalCost,
-                    getBalance(player));
+                    getEMC(player));
             return ItemStack.EMPTY;
         }
 
@@ -185,6 +180,8 @@ public class EMCHelper {
      * Get a formatted string of a player's balance
      */
     public static String getFormattedBalance(Player player) {
-        return getPlayerEMC(player).getFormattedEMC();
+        long bal = getEMC(player);
+        return Long.toString(bal);
+        //return String.format("%d", bal);
     }
 }

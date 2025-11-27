@@ -14,15 +14,18 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
 
     public NeoPlateScreen(NeoPlateMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.titleLabelY = titleLabelY - 5;
-        this.titleLabelX = titleLabelX + 62;
+        this.imageWidth = 228;
+        this.imageHeight = 196;
+        this.titleLabelY = titleLabelY - 6;
+        this.titleLabelX = titleLabelX + 8;
+        this.inventoryLabelX = Integer.MAX_VALUE;
+        this.inventoryLabelY = Integer.MAX_VALUE;
     }
 
     @Override
     protected void renderBg(GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
         int x = (width - imageWidth) / 2;
         int y = (height - imageHeight) / 2;
-
         guiGraphics.blit(RenderPipelines.GUI_TEXTURED, GUI_TEXTURE, x, y, 0, 0, imageWidth, imageHeight, 256, 256);
     }
 

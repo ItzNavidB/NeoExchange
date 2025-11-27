@@ -197,7 +197,27 @@ public class EMCRegistry {
             return IuaValues;
         }
         return itemsList;
+    }
 
+    public static List<Item> getItemsWithEMC() {
+
+        // If the singleton hasn't been created OR not initialized → prevent crashes
+        if (instance == null || !instance.initialized) {
+            return List.of();
+        }
+        List<Item> itemsList = instance.inactiveValues;
+        if (itemsList.isEmpty()) {
+            List<Item> IuaValues = new ArrayList<>(List.of());
+            for (ItemStack value : itemStackList) {
+                if (value != null) {
+                    if(getInstance().hasEMC(value.getItem())) {
+                        IuaValues.add(value.getItem());
+                    };
+                }
+            }
+            return IuaValues;
+        }
+        return itemsList;
     }
 
     /**

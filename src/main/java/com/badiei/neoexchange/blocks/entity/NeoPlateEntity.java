@@ -36,14 +36,10 @@ import org.jetbrains.annotations.Nullable;
 public class NeoPlateEntity extends BlockEntity implements MenuProvider, Container {
     
     // Inventory to hold a single item (the Neo Stone)
-    public final ItemStackHandler inventory = new ItemStackHandler(1) {
+
+    public final ItemStackHandler inventory = new ItemStackHandler(NeoPlateMenu.getSlotSize()) {
         @Override
         protected int getStackLimit(int slot, ItemStack stack) {
-            return 1;
-        }
-
-        @Override
-        public int getSlotLimit(int slot) {
             return 1;
         }
 
@@ -78,20 +74,21 @@ public class NeoPlateEntity extends BlockEntity implements MenuProvider, Contain
     public Component getDisplayName() {
         return Component.literal("Neo Plate");
     }
-    
+
     @Nullable
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
-        // Use a simple chest menu with 1 slot (9 slots per row, we only show 1)
         return new NeoPlateMenu(containerId, playerInventory, this);
     }
     
     // ========== CONTAINER IMPLEMENTATION ==========
     
+
     @Override
     public int getContainerSize() {
-        return 1; // Only 1 slot for the stone
+        return NeoPlateMenu.getSlotSize(); // Only 1 slot for the stone
     }
+
     
     @Override
     public boolean isEmpty() {
@@ -101,19 +98,20 @@ public class NeoPlateEntity extends BlockEntity implements MenuProvider, Contain
     
     @Override
     public ItemStack getItem(int slot) {
-        return slot == 0 ? inventory.getStackInSlot(0) : ItemStack.EMPTY;
+        if (slot < 0 || slot >= inventory.getSlots()) return ItemStack.EMPTY;
+        return inventory.getStackInSlot(slot);
     }
     
     @Override
     public ItemStack removeItem(int slot, int amount) {
-        if (slot != 0) return ItemStack.EMPTY;
+        if (slot < 0 || slot >= inventory.getSlots()) return ItemStack.EMPTY;
         
-        ItemStack stack = inventory.getStackInSlot(0);
+        ItemStack stack = inventory.getStackInSlot(slot);
         if (stack.isEmpty()) return ItemStack.EMPTY;
         
         ItemStack removed = stack.split(amount);
         if (stack.isEmpty()) {
-            inventory.setStackInSlot(0, ItemStack.EMPTY);
+            inventory.setStackInSlot(slot, ItemStack.EMPTY);
         }
         setChanged();
         return removed;
@@ -121,25 +119,15 @@ public class NeoPlateEntity extends BlockEntity implements MenuProvider, Contain
     
     @Override
     public ItemStack removeItemNoUpdate(int slot) {
-        if (slot != 0) return ItemStack.EMPTY;
+        if (slot < 0 || slot >= inventory.getSlots()) return ItemStack.EMPTY;
         
-        ItemStack removed = inventory.getStackInSlot(0);
-        inventory.setStackInSlot(0, ItemStack.EMPTY);
+        ItemStack removed = inventory.getStackInSlot(slot);
+        inventory.setStackInSlot(slot, ItemStack.EMPTY);
         return removed;
     }
     
     @Override
     public void setItem(int slot, ItemStack stack) {
-        if (slot != 0) return;
-        
-        // Only accept Neo Stones or empty stacks
-        if (stack.isEmpty() || stack.getItem() instanceof NeoStoneItem) {
-            inventory.setStackInSlot(0, stack);
-            if (stack.getCount() > getMaxStackSize()) {
-                stack.setCount(getMaxStackSize());
-            }
-            setChanged();
-        }
     }
     
     @Override
@@ -155,7 +143,9 @@ public class NeoPlateEntity extends BlockEntity implements MenuProvider, Contain
     
     @Override
     public void clearContent() {
-        inventory.setStackInSlot(0, ItemStack.EMPTY);
+        for (int i = 0; i < inventory.getSlots(); i++) {
+            inventory.setStackInSlot(i, ItemStack.EMPTY);
+        }
     }
     
     @Override
@@ -165,8 +155,12 @@ public class NeoPlateEntity extends BlockEntity implements MenuProvider, Contain
     
     @Override
     public boolean canPlaceItem(int slot, ItemStack stack) {
-        // Only accept Neo Stones in the slot
-        return slot == 0 && (stack.isEmpty() || stack.getItem() instanceof NeoStoneItem);
+        // Slot 0: Only accept Neo Stones
+        if (slot == 0) {
+            return stack.isEmpty() || stack.getItem() instanceof NeoStoneItem;
+        }
+        // Slot 1: Accept any item (burn slot)
+        return slot == 1;
     }
     
     // ========== HELPER METHODS ==========

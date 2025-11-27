@@ -3,6 +3,7 @@ package com.badiei.neoexchange.emc;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.logging.LogUtils;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -11,6 +12,9 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import com.badiei.neoexchange.NeoExchange;
+import org.slf4j.Logger;
+
+import java.util.UUID;
 
 /**
  * EMCCommands - In-game commands for testing and managing EMC
@@ -23,6 +27,7 @@ import com.badiei.neoexchange.NeoExchange;
  */
 @EventBusSubscriber(modid = NeoExchange.MOD_ID)
 public class EMCCommands {
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     /**
      * Register all EMC commands
@@ -97,6 +102,7 @@ public class EMCCommands {
 
         long balance = EMCHelper.getBalance(player);
         String formatted = EMCHelper.getFormattedBalance(player);
+        LOGGER.info("player: {}, balance: {}, UUID: {}", player, balance);
 
         // Send a nice formatted message to the player
         context.getSource().sendSuccess(
