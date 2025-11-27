@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "N": "neoexchange:rare_stone",
+    "R": "minecraft:netherite_ingot"
+  },
+  "pattern": [
+    "RRR",
+    "RNR",
+    "RRR"
+  ],
+  "result": {
+    "count": 1,
+    "id": "neoexchange:epic_stone"
+  }
+}
