@@ -84,6 +84,10 @@ public class EMCEventHandler {
                     player.getName().getString(),
                     balance);
 
+            // IMPORTANT: Sync EMC to client on login!
+            // Without this, the client won't know the player's balance
+            EMCHelper.syncEMC(player);
+
             // Optional: Send a welcome message with their balance
             // player.sendSystemMessage(
             //     Component.literal("Welcome back! Your EMC: ")

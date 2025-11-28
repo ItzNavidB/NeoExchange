@@ -1,5 +1,6 @@
 package com.badiei.neoexchange.emc;
 
+import com.badiei.neoexchange.items.NeoItems;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;

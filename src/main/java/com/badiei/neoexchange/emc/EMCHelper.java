@@ -1,11 +1,14 @@
 package com.badiei.neoexchange.emc;
 
+import com.badiei.neoexchange.network.SyncEMCPacket;
 import net.minecraft.client.Minecraft;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.entity.EntityLookup;
 import net.minecraft.world.level.entity.UUIDLookup;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;
@@ -47,27 +50,42 @@ public class EMCHelper {
 
     /**
      * Set a player's EMC balance
+     * 
+     * If called on the server side, automatically syncs to client
      */
     public static void setBalance(Player player, long amount) {
         getPlayerEMC(player).setEMC(amount);
+        syncEMC(player);
     }
 
     /**
      * Add EMC to a player's balance
      *
+     * If called on the server side, automatically syncs to client
+     * 
      * @return true if successful
      */
     public static boolean addEMC(Player player, long amount) {
-        return getPlayerEMC(player).addEMC(amount);
+        boolean success = getPlayerEMC(player).addEMC(amount);
+        if (success) {
+            syncEMC(player);
+        }
+        return success;
     }
 
     /**
      * Remove EMC from a player's balance
      *
+     * If called on the server side, automatically syncs to client
+     * 
      * @return true if successful (enough EMC available)
      */
     public static boolean removeEMC(Player player, long amount) {
-        return getPlayerEMC(player).removeEMC(amount);
+        boolean success = getPlayerEMC(player).removeEMC(amount);
+        if (success) {
+            syncEMC(player);
+        }
+        return success;
     }
 
     /**
@@ -186,5 +204,31 @@ public class EMCHelper {
      */
     public static String getFormattedBalance(Player player) {
         return getPlayerEMC(player).getFormattedEMC();
+    }
+
+    /**
+     * Synchronize EMC from server to client
+     * 
+     * This method sends a packet to the client with the player's current EMC balance.
+     * It only works on the server side - calling it on the client does nothing.
+     * 
+     * Why check if it's ServerPlayer?
+     * - ServerPlayer = server-side player object
+     * - Player (client) = client-side player object
+     * - We only send packets FROM server TO client
+     * 
+     * @param player The player whose EMC should be synced
+     */
+    public static void syncEMC(Player player) {
+        // Only send packets from the server side
+        if (player instanceof ServerPlayer serverPlayer) {
+            long balance = getBalance(player);
+            
+            // Create and send the packet to this specific player
+            PacketDistributor.sendToPlayer(serverPlayer, new SyncEMCPacket(balance));
+            
+            LOGGER.debug("Synced EMC to client: {} for player {}", 
+                balance, player.getName().getString());
+        }
     }
 }

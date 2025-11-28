@@ -11,6 +11,7 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ScreenEvent;
@@ -20,7 +21,7 @@ import java.awt.*;
 import java.util.Objects;
 import java.util.UUID;
 
-@EventBusSubscriber
+@EventBusSubscriber(modid = NeoExchange.MOD_ID, value = Dist.CLIENT)
 public class EMCInventoryOverlay {
     private static final Logger LOGGER = LogUtils.getLogger();
     @SubscribeEvent

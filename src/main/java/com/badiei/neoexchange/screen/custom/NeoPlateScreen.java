@@ -16,7 +16,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         super(menu, playerInventory, title);
         this.imageWidth = 228;
         this.imageHeight = 196;
-        this.titleLabelY = titleLabelY - 6;
+        this.titleLabelY = titleLabelY;
         this.titleLabelX = titleLabelX + 8;
         this.inventoryLabelX = Integer.MAX_VALUE;
         this.inventoryLabelY = Integer.MAX_VALUE;

@@ -46,7 +46,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 0, 43, 49) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                boolean allowed = stack.is(ModTags.Items.USEABLE_STONES);
+                boolean allowed = stack.is(ModTags.Items.USEABLE_STONES) || stack.getItem().equals(NeoItems.NEO_STONE.asItem());
                 LOGGER.info("Checking {} -> allowed: {}", stack.getItem().getName(), allowed);
                 LOGGER.info("Checking for tag: {}", ModTags.Items.USEABLE_STONES);
                 return allowed;
@@ -56,7 +56,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 1, 107, 97) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                boolean allowed = EMCRegistry.getItemsWithEMC().contains(stack.getItem());
+                boolean allowed = EMCRegistry.getInstance().hasEMC(stack.getItem());
                 return allowed;
             }
         });
