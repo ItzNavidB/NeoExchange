@@ -58,6 +58,11 @@ public class NetworkHandler {
             SyncEMCPacket.STREAM_CODEC,
             SyncEMCPacket::handleClient
         );
+        registrar.playToClient(
+                SyncNeoPlateDataPacket.PACKET_ID,
+                SyncNeoPlateDataPacket.STREAM_CODEC,
+                SyncNeoPlateDataPacket::handleClient
+        );
 
         NeoExchange.LOGGER.info("Network packets registered successfully!");
     }

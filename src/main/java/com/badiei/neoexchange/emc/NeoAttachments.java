@@ -1,14 +1,20 @@
 package com.badiei.neoexchange.emc;
 
 import com.badiei.neoexchange.NeoExchange;
+import com.mojang.logging.LogUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.attachment.AttachmentType;
 import net.neoforged.neoforge.attachment.IAttachmentSerializer;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
+import org.slf4j.Logger;
 
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -27,6 +33,7 @@ import java.util.function.Supplier;
  * - Syncs between client/server automatically
  */
 public class NeoAttachments {
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     /**
      * DeferredRegister for AttachmentTypes
@@ -35,41 +42,29 @@ public class NeoAttachments {
     public static final DeferredRegister<AttachmentType<?>> ATTACHMENT_TYPES =
             DeferredRegister.create(NeoForgeRegistries.ATTACHMENT_TYPES, NeoExchange.MOD_ID);
 
-    /**
-     * The actual EMC data attachment
-     *
-     * Codec is used for serialization - it defines how to convert
-     * our PlayerEMCData object into a format that can be saved to disk
-     *
-     * RecordCodecBuilder is like saying "this object has these fields,
-     * and here's how to encode/decode each one"
-     */
-    /*public static final Supplier<AttachmentType<PlayerEMCData>> PLAYER_EMC = ATTACHMENT_TYPES.register(
-            "player_emc",
-            () -> AttachmentType.builder(() -> new PlayerEMCData())
-                    .serialize(
-                            // This codec defines how to save/load PlayerEMCData
-                            RecordCodecBuilder.create(instance -> instance.group(
-                                    // Field name: "emc_balance"
-                                    // Type: Long (Codec.LONG)
-                                    // Getter: get the EMC from the data object
-                                    // Setter: create new PlayerEMCData with this EMC value
-                                    Codec.LONG.fieldOf("emc_balance").forGetter(PlayerEMCData::getEMC)
-                            ).apply(instance, emc -> {
-                                PlayerEMCData data = new PlayerEMCData();
-                                data.setEMC(emc);
-                                return data;
-                            }))
-                    )
-                    .build()
-    );*/
-
     public static final Supplier<AttachmentType<PlayerEMCData>> PLAYER_EMC = ATTACHMENT_TYPES.register(
             "player_emc", () -> AttachmentType.builder(() -> new PlayerEMCData())
-                    .serialize(Codec.LONG.xmap(
-                            PlayerEMCData::new,           // long -> PlayerEMCData
-                            PlayerEMCData::getEMC         // PlayerEMCData -> long
-                    ).fieldOf("emc_balance"))
+                    .serialize(RecordCodecBuilder.<PlayerEMCData>create(instance ->
+                            instance.group(
+                                    Codec.LONG.fieldOf("emc_balance").forGetter(PlayerEMCData::getEMC),
+                                    Codec.STRING.listOf().fieldOf("learned_items").forGetter(data ->
+                                            data.getLearnedItems().stream()
+                                                    .map(ResourceLocation::toString)
+                                                    .toList()
+                                    )
+                            ).apply(instance, (emc, items) -> {
+                                PlayerEMCData data = new PlayerEMCData(emc);
+                                items.forEach(itemStr -> {
+                                    try {
+                                        ResourceLocation id = ResourceLocation.parse(itemStr);
+                                        BuiltInRegistries.ITEM.getOptional(id).ifPresent(data::learnItem);
+                                    } catch (Exception e) {
+                                        LOGGER.warn("Invalid item ID: {}", itemStr);
+                                    }
+                                });
+                                return data;
+                            })
+                    ).fieldOf("player_emc_data"))  // <-- This is the key addition!
                     .build()
     );
 

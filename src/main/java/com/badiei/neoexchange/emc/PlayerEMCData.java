@@ -1,14 +1,20 @@
 package com.badiei.neoexchange.emc;
 
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.neoforged.neoforge.common.util.ValueIOSerializable;
 import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;
+
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * PlayerEMCData - Individual player's EMC storage
@@ -26,6 +32,36 @@ public class PlayerEMCData {
 
     PlayerEMCData(long emcBalance) {
         this.emcBalance = emcBalance;
+    }
+
+    /**
+     * Reconstruct PlayerEMCData from saved data
+     * Used by the codec system when loading player data
+     *
+     * @param emc The saved EMC balance
+     * @param learnedItemStrings The saved learned items as strings
+     * @return A new PlayerEMCData with the loaded data
+     */
+    public static PlayerEMCData fromSavedData(long emc, java.util.List<String> learnedItemStrings) {
+        PlayerEMCData data = new PlayerEMCData(emc);
+
+        // Parse each string back into an item and learn it
+        for (String itemIdString : learnedItemStrings) {
+            try {
+                ResourceLocation itemId = ResourceLocation.parse(itemIdString);
+                java.util.Optional<net.minecraft.world.item.Item> item =
+                        BuiltInRegistries.ITEM.getOptional(itemId);
+
+                if (item.isPresent()) {
+                    data.learnItem(item.get());
+                }
+            } catch (Exception e) {
+                // Skip invalid item IDs (maybe from removed mods)
+                LOGGER.warn("Failed to load learned item: {}", itemIdString);
+            }
+        }
+
+        return data;
     }
 
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -168,4 +204,30 @@ public class PlayerEMCData {
     }
 
 
+    private final Set<ResourceLocation> learnedItems = new HashSet<>();
+
+    public boolean hasLearned(Item item) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        return learnedItems.contains(itemId);
+    }
+
+    public void learnItem(Item item) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        if (learnedItems.contains(itemId)) {return;}
+        learnedItems.add(itemId);
+    }
+
+    public void unLearnItem(Item item) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        if (!learnedItems.contains(itemId)) {return;}
+        learnedItems.remove(itemId);
+    }
+
+    /**
+     * Get the set of learned items (for serialization)
+     * Returns a copy to prevent external modification
+     */
+    public Set<ResourceLocation> getLearnedItems() {
+        return new HashSet<>(learnedItems);
+    }
 }
