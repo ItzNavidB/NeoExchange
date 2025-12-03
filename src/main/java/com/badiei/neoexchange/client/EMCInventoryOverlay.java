@@ -32,6 +32,9 @@ public class EMCInventoryOverlay {
             Minecraft instance = Minecraft.getInstance();
             Player player = instance.player;
             if (player != null) {
+                if (EMCHelper.getBalance(player) <= 0) {
+                    return;
+                }
                 GuiGraphics graphics = event.getGuiGraphics();
                 int w = event.getScreen().width/2 - 85;
                 int h = event.getScreen().height/2 - 95;

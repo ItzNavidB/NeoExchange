@@ -11,15 +11,9 @@ import com.badiei.neoexchange.items.NeoItems;
 import com.badiei.neoexchange.items.NeoStoneItem;
 import com.badiei.neoexchange.network.SyncNeoPlateDataPacket;
 import com.badiei.neoexchange.screen.ModMenuTypes;
-import com.google.common.collect.Maps;
 import com.mojang.logging.LogUtils;
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.*;
@@ -27,14 +21,22 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.neoforged.neoforge.items.ItemStackHandler;
-import net.neoforged.neoforge.items.SlotItemHandler;
 import net.neoforged.neoforge.network.PacketDistributor;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import java.util.List;
 import java.util.Optional;
 
+/**
+ * NeoPlateMenu - The menu/container for the Neo Plate GUI
+ *
+ * This menu now uses a Model-View architecture:
+ * - The MODEL is the list of items to display (filtered, sorted, paginated)
+ * - The VIEW is the fixed grid of VirtualEMCSlots
+ * - When the model changes, we update the view
+ *
+ * This approach is much more flexible and performant!
+ */
 public class NeoPlateMenu extends AbstractContainerMenu {
     public static final Logger LOGGER = LogUtils.getLogger();
     public final NeoPlateEntity blockEntity;
@@ -42,19 +44,24 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     private final Player player;
 
     // Data tracking for GUI display
-    private long playerEMCBalance = 0;      // Current player EMC
-    private long lastEMCGained = 0;         // EMC from last burn
-    private boolean lastItemWasNew = false; // Was last item newly learned?
-    private String lastItemName = "";       // Name of last burned item
-    private String lastItemName2 = "";       // Name of last burned item
+    private long playerEMCBalance = 0;
+    private long previousEMCBalance = 0;
+    private long lastEMCGained = 0;
+    private boolean lastItemWasNew = false;
+    private String lastItemName = "";
+    private String lastItemName2 = "";
 
-    // For the "fade out" effect on gained EMC
+    // Display timers
     private int emcGainedDisplayTimer = 0;
-    private static final int EMC_DISPLAY_DURATION = 100; // 3 seconds (60 ticks)
-
-    // For the "fade out" effect on unlearned items
+    private static final int EMC_DISPLAY_DURATION = 100;
     private int unlearnDisplayTimer = 0;
-    private static final int UNLEARN_DISPLAY_DURATION = 100; // 3 seconds (60 ticks)
+    private static final int UNLEARN_DISPLAY_DURATION = 100;
+
+    // Virtual grid management
+    private int virtualSlotStartIndex = 0;
+    private int scrollOffset = 0;  // For pagination (future feature)
+    private boolean filterAffordableOnly = true;  // Show only affordable items by default
+    private int maxEMC = 0;
 
     public NeoPlateMenu(int containerId, Inventory inv, FriendlyByteBuf extraData) {
         this(containerId, inv, inv.player.level().getBlockEntity(extraData.readBlockPos()));
@@ -69,60 +76,44 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         // Initialize player EMC balance
         if (!level.isClientSide()) {
             playerEMCBalance = EMCHelper.getBalance(player);
-
-            // Send initial data to client
+            previousEMCBalance = playerEMCBalance;
             sendDataToClient();
         }
 
+        // Add player inventory (36 slots: 27 inventory + 9 hotbar)
         addPlayerInventory(inv, 27, 33);
         addPlayerHotbar(inv, 27, 33);
-        //Stones Item Slot
-        this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 0, 43, 49) {
-            @Override
-            public boolean mayPlace(ItemStack stack) {
-                boolean allowed = stack.is(ModTags.Items.USEABLE_STONES) || stack.getItem().equals(NeoItems.NEO_STONE.asItem());
-                //LOGGER.info("Checking {} -> allowed: {}", stack.getItem().getName(), allowed);
-                //LOGGER.info("Checking for tag: {}", ModTags.Items.USEABLE_STONES);
-                return allowed;
-            }
-        });
-        //Burner Item Slot
-        this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 1, 107, 97) {
-            @Override
-            public boolean mayPlace(ItemStack stack) {
-                boolean allowed = EMCRegistry.getInstance().hasEMC(stack.getItem());
-                return allowed;
-            }
-            @Override
-            public void setChanged() {
-                super.setChanged();
 
-                if (level.isClientSide()) {return;}
+        // Create and add the 3 fixed slots (stone, burner, unlearn)
+        List<Slot> fixedSlots = NeoPlateMenuSlots.createFixedSlots(
+                this.blockEntity.inventory,
+                level,
+                this::processBurnerSlot,
+                this::processUnlearnSlot,
+                this::processStoneSlot
+        );
+        for (Slot slot : fixedSlots) {
+            this.addSlot(slot);
+        }
 
-                ItemStack item = this.getItem();
-                processBurnerSlot(item);
-            }
-        });
-        //Unlearn Item Slot
-        this.addSlot(new SlotItemHandler(this.blockEntity.inventory, 2, 89, 97) {
-            @Override
-            public boolean mayPlace(ItemStack stack) {
-                boolean allowed = EMCRegistry.getItemsWithEMC().contains(stack.getItem());
-                return allowed;
-            }
-            @Override
-            public void setChanged() {
-                super.setChanged();
+        // Remember where virtual slots start
+        virtualSlotStartIndex = this.slots.size();
 
-                if (level.isClientSide()) {return;}
+        // Create a FIXED GRID of virtual slots
+        // These start empty and will be populated by updateVirtualSlots()
+        List<Slot> virtualSlots = NeoPlateMenuSlots.createVirtualSlots(player, level);
+        for (Slot slot : virtualSlots) {
+            this.addSlot(slot);
+        }
 
-                ItemStack item = this.getItem();
-                processUnlearnSlot(item);
-            }
-        });
+        // Initial population of the virtual grid
+        updateVirtualSlots();
+
+        LOGGER.info("NeoPlateMenu initialized with {} total slots ({} virtual slots starting at index {})",
+                this.slots.size(), virtualSlots.size(), virtualSlotStartIndex);
     }
 
-
+    // Slot indices constants
     private static final int HOTBAR_SLOT_COUNT = 9;
     private static final int PLAYER_INVENTORY_ROW_COUNT = 3;
     private static final int PLAYER_INVENTORY_COLUMN_COUNT = 9;
@@ -131,43 +122,292 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     private static final int VANILLA_FIRST_SLOT_INDEX = 0;
     private static final int TE_INVENTORY_FIRST_SLOT_INDEX = VANILLA_FIRST_SLOT_INDEX + VANILLA_SLOT_COUNT;
 
-    private static final int TE_INVENTORY_SLOT_COUNT = 3;  // must be the number of slots you have!
+    private static final int FIXED_SLOT_COUNT = 3;  // Stone, Burner, Unlearn
+    private static final int VIRTUAL_SLOT_COUNT = NeoPlateMenuSlots.getTotalGridSlots();  // 20
+    private static final int TE_INVENTORY_SLOT_COUNT = FIXED_SLOT_COUNT + VIRTUAL_SLOT_COUNT;  // 23 total
 
+    // Individual slot indices for special handling
+    private static final int STONE_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX;      // 36
+    private static final int BURNER_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 1; // 37
+    private static final int UNLEARN_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 2; // 38
+    private static final int VIRTUAL_SLOTS_START_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 3; // 39
 
     @Override
     public ItemStack quickMoveStack(Player playerIn, int pIndex) {
         Slot sourceSlot = slots.get(pIndex);
-        if (sourceSlot == null || !sourceSlot.hasItem()) return ItemStack.EMPTY;  //EMPTY_ITEM
+        if (sourceSlot == null || !sourceSlot.hasItem()) return ItemStack.EMPTY;
         ItemStack sourceStack = sourceSlot.getItem();
         ItemStack copyOfSourceStack = sourceStack.copy();
 
-        // Check if the slot clicked is one of the vanilla container slots
         if (pIndex < VANILLA_FIRST_SLOT_INDEX + VANILLA_SLOT_COUNT) {
-            // This is a vanilla container slot so merge the stack into the tile inventory
             if (!moveItemStackTo(sourceStack, TE_INVENTORY_FIRST_SLOT_INDEX, TE_INVENTORY_FIRST_SLOT_INDEX
                     + TE_INVENTORY_SLOT_COUNT - 1, false)) {
-                return ItemStack.EMPTY;  // EMPTY_ITEM
+                return ItemStack.EMPTY;
             }
         } else if (pIndex < TE_INVENTORY_FIRST_SLOT_INDEX + TE_INVENTORY_SLOT_COUNT) {
-            // This is a TE slot so merge the stack into the players inventory
             if (!moveItemStackTo(sourceStack, VANILLA_FIRST_SLOT_INDEX, VANILLA_FIRST_SLOT_INDEX + VANILLA_SLOT_COUNT, false)) {
                 return ItemStack.EMPTY;
             }
         } else {
-            System.out.println("Invalid slotIndex:" + pIndex);
+            LOGGER.debug("Attempted shift-click from virtual slot {}", pIndex);
             return ItemStack.EMPTY;
         }
-        // If stack size == 0 (the entire stack was moved) set slot contents to null
+
         if (sourceStack.getCount() == 0) {
             sourceSlot.set(ItemStack.EMPTY);
         } else {
             sourceSlot.setChanged();
         }
+
         if (sourceStack.getItem() instanceof NeoStoneItem) {
             sourceSlot.onTake(playerIn, sourceStack);
             return copyOfSourceStack;
         }
+
         return ItemStack.EMPTY;
+    }
+
+    @Override
+    public void broadcastChanges() {
+        super.broadcastChanges();
+
+        // Countdown display timers
+        if (emcGainedDisplayTimer > 0) {
+            emcGainedDisplayTimer--;
+            if (emcGainedDisplayTimer <= 0) {
+                lastEMCGained = 0;
+                lastItemWasNew = false;
+                lastItemName = "";
+            }
+        }
+
+        if (unlearnDisplayTimer > 0) {
+            unlearnDisplayTimer--;
+            if (unlearnDisplayTimer <= 0) {
+                lastItemName2 = "";
+            }
+        }
+
+        // Check if EMC balance changed
+        long currentBalance = EMCHelper.getBalance(player);
+        boolean balanceChanged = currentBalance != previousEMCBalance;
+
+        if (balanceChanged) {
+            LOGGER.debug("EMC balance changed from {} to {}", previousEMCBalance, currentBalance);
+            previousEMCBalance = currentBalance;
+            playerEMCBalance = currentBalance;
+
+            // ✨ THE MAGIC: Update the virtual grid when EMC changes
+            updateVirtualSlots();
+        }
+
+        sendDataToClient();
+    }
+
+    /**
+     * Update all virtual slots based on the current filtered/sorted item list
+     *
+     * This is THE KEY METHOD in your new architecture!
+     *
+     * How it works:
+     * 1. Build a list of items to display (filtered, sorted)
+     * 2. Map the list to the fixed grid of slots
+     * 3. Tell each slot which item (if any) to display
+     *
+     * Example with 5 items and 20 slots:
+     * - Slots 0-4 show the 5 items
+     * - Slots 5-19 are empty
+     *
+     * When EMC increases and more items become affordable:
+     * - Rebuild the list (now 10 items)
+     * - Slots 0-9 show the 10 items
+     * - Slots 10-19 are empty
+     */
+    private void updateVirtualSlots() {
+        // Step 1: Build the display list
+        // This list is filtered, sorted, and ready to display
+        ItemStack stone = this.blockEntity.inventory.getStackInSlot(0);
+
+        maxEMC = EMCHelper.getStoneMaxEMC(stone);
+
+        List<Item> displayList = NeoPlateMenuSlots.buildDisplayList(
+                player,
+                scrollOffset,
+                filterAffordableOnly,
+                maxEMC
+        );
+
+        // Step 2: Map the list to slots
+        for (int i = virtualSlotStartIndex; i < this.slots.size(); i++) {
+            Slot slot = this.slots.get(i);
+
+            if (slot instanceof VirtualEMCSlot virtualSlot) {
+                // Calculate which item in the list this slot should show
+                int listIndex = i - virtualSlotStartIndex;
+
+                if (listIndex < displayList.size()) {
+                    // This slot should show an item
+                    Item item = displayList.get(listIndex);
+                    int affordableAmount = calculateAffordableAmount(item);
+
+                    // Tell the slot to display this item
+                    virtualSlot.updateDisplay(item, affordableAmount);
+                } else {
+                    // This slot should be empty (no more items in the list)
+                    virtualSlot.updateDisplay(net.minecraft.world.item.Items.AIR, 0);
+                }
+            }
+        }
+    }
+
+    /**
+     * Calculate how many of an item the player can afford
+     */
+    private int calculateAffordableAmount(Item item) {
+        long emcPerItem = EMCHelper.getItemEMC(item).orElse(0L);
+        if (emcPerItem <= 0) {
+            return 0; // Free!
+        }
+
+        long balance = EMCHelper.getBalance(player);
+        long affordable = balance / emcPerItem;
+
+        return (int) Math.min(affordable, item.getDefaultMaxStackSize());
+    }
+
+    /**
+     * Toggle the affordable-only filter
+     *
+     * When true: Only show items player can afford
+     * When false: Show all learned items (unaffordable ones have 0 count)
+     *
+     * This can be called from the GUI (future button)
+     */
+    public void toggleAffordableFilter() {
+        this.filterAffordableOnly = !this.filterAffordableOnly;
+        updateVirtualSlots();
+        LOGGER.info("Affordable filter toggled to: {}", filterAffordableOnly);
+    }
+
+    /**
+     * Set the scroll offset for pagination
+     *
+     * offset = 0: Show items 0-19
+     * offset = 1: Show items 4-23 (scrolled down 1 row with 4 columns)
+     * etc.
+     *
+     * This can be called from the GUI (future scrollbar)
+     */
+    public void setScrollOffset(int offset) {
+        this.scrollOffset = Math.max(0, offset);
+        updateVirtualSlots();
+        LOGGER.info("Scroll offset set to: {}", scrollOffset);
+    }
+
+    private void sendDataToClient() {
+        if (player instanceof ServerPlayer serverPlayer) {
+            SyncNeoPlateDataPacket packet = new SyncNeoPlateDataPacket(
+                    playerEMCBalance,
+                    lastEMCGained,
+                    lastItemWasNew,
+                    lastItemName,
+                    lastItemName2,
+                    emcGainedDisplayTimer,
+                    unlearnDisplayTimer
+            );
+            PacketDistributor.sendToPlayer(serverPlayer, packet);
+        }
+    }
+
+    private void processBurnerSlot(ItemStack stack) {
+        if (level.isClientSide() || player == null || stack.isEmpty()) {
+            return;
+        }
+
+        Optional<Long> emcValue = EMCHelper.getStackEMC(stack);
+        if (emcValue.isEmpty()) {
+            LOGGER.warn("Item {} in burner slot has no EMC value!", stack.getItem());
+            return;
+        }
+
+        long totalEMC = emcValue.get();
+        Item item = stack.getItem();
+        int count = stack.getCount();
+
+        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+        Boolean isNewItem = !emcData.hasLearned(item);
+        boolean success = EMCHelper.addEMC(player, totalEMC);
+
+        if (success) {
+            lastEMCGained = totalEMC;
+            lastItemWasNew = isNewItem;
+            lastItemName = stack.getHoverName().getString();
+            emcGainedDisplayTimer = EMC_DISPLAY_DURATION;
+
+            LOGGER.info("Successfully gave {} EMC. New item: {}", totalEMC, isNewItem);
+
+            this.blockEntity.inventory.extractItem(1, count, false);
+            this.blockEntity.setChanged();
+
+            emcData.learnItem(item);
+            EMCHelper.syncLearnedItems(player);
+
+            sendDataToClient();
+
+            // If a new item was learned, the grid needs updating!
+            if (isNewItem) {
+                updateVirtualSlots();
+            }
+        } else {
+            LOGGER.error("Failed to add EMC - overflow?");
+        }
+    }
+
+    private void processStoneSlot(ItemStack stack) {
+        if (level.isClientSide() || player == null || stack.isEmpty()) {
+            return;
+        }
+
+        // No special processing needed server-side for stone changes
+        // The stone slot is handled automatically by the block entity
+
+        LOGGER.info("Player {} changed Neo Stone to {}", player.getName().getString(), stack.getItem());
+
+        // Update the maxEMC based on the new stone
+        NeoStoneType stoneType = NeoStoneType.COMMON;
+        if (stack.getItem() instanceof NeoStoneItem neoStone) {
+            stoneType = neoStone.getStoneType();
+        }
+        maxEMC = stoneType.getMaxEMC();
+
+        // Update the virtual slots to reflect new maxEMC
+        updateVirtualSlots();
+    }
+
+    private void processUnlearnSlot(ItemStack stack) {
+        if (level.isClientSide() || player == null || stack.isEmpty()) {
+            return;
+        }
+
+        Item item = stack.getItem();
+        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+
+        Boolean isLearned = emcData.hasLearned(item);
+        if (!isLearned) {
+            return;
+        }
+
+        lastItemName2 = stack.getHoverName().getString();
+        unlearnDisplayTimer = UNLEARN_DISPLAY_DURATION;
+
+        emcData.unLearnItem(item);
+        sendDataToClient();
+        EMCHelper.syncLearnedItems(player);
+
+        // An item was unlearned, update the grid!
+        updateVirtualSlots();
+
+        LOGGER.info("Player {} unlearned {}", player.getName().getString(), item);
     }
 
     @Override
@@ -192,190 +432,34 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     public static int getSlotSize() {
         return TE_INVENTORY_SLOT_COUNT;
     }
-    public int getContainerSize() {return this.blockEntity.getContainerSize();}
 
-
-    @Override
-    public void broadcastChanges() {
-        // Countdown the display timer for "EMC Gained" message
-        if (emcGainedDisplayTimer > 0) {
-            emcGainedDisplayTimer--;
-
-            // Clear the message when timer runs out
-            if (emcGainedDisplayTimer <= 0) {
-                lastEMCGained = 0;
-                lastItemWasNew = false;
-                lastItemName = "";
-            }
-        }
-        if (unlearnDisplayTimer > 0) {
-            unlearnDisplayTimer--;
-
-            // Clear the message when timer runs out
-            if (unlearnDisplayTimer <= 0) {
-                lastItemName2 = "";
-            }
-        }
-
-
-        // Update player's current EMC balance
-        long currentBalance = EMCHelper.getBalance(player);
-
-        // Check if EMC balance changed
-        boolean balanceChanged = currentBalance != playerEMCBalance;
-        if (balanceChanged) {
-            playerEMCBalance = currentBalance;
-        }
-        sendDataToClient();
-    }
-    private void sendDataToClient() {
-        if (player instanceof ServerPlayer serverPlayer) {
-            // Create the packet with current data
-            SyncNeoPlateDataPacket packet = new SyncNeoPlateDataPacket(
-                    playerEMCBalance,
-                    lastEMCGained,
-                    lastItemWasNew,
-                    lastItemName,
-                    lastItemName2,
-                    emcGainedDisplayTimer,
-                    unlearnDisplayTimer
-            );
-
-            // Send it to this specific player
-            PacketDistributor.sendToPlayer(serverPlayer, packet);
-        }
+    public int getContainerSize() {
+        return this.blockEntity.getContainerSize();
     }
 
-    private void processBurnerSlot(ItemStack stack) {
-        // Safety checks
-        if (level.isClientSide() || player == null || stack.isEmpty()) {
-            return;
-        }
-
-        // Get the EMC value for the ENTIRE stack
-        // For example, 64 diamonds = 64 * 8192 EMC
-        Optional<Long> emcValue = EMCHelper.getStackEMC(stack);
-
-        if (emcValue.isEmpty()) {
-            LOGGER.warn("Item {} in burner slot has no EMC value!", stack.getItem());
-            return;
-        }
-
-        long totalEMC = emcValue.get();
-        Item item = stack.getItem();
-        int count = stack.getCount();
-
-        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
-
-        Boolean isNewItem = !emcData.hasLearned(item);
-        boolean success = EMCHelper.addEMC(player, totalEMC);
-
-        if (success) {
-            // Update display information
-            lastEMCGained = totalEMC;
-            lastItemWasNew = isNewItem;
-            lastItemName = stack.getHoverName().getString(); // Get the item's display name
-            emcGainedDisplayTimer = EMC_DISPLAY_DURATION; // Show for 3 seconds
-
-            LOGGER.info("Successfully gave {} EMC. New item: {}", totalEMC, isNewItem);
-
-            // Consume the item
-            this.blockEntity.inventory.extractItem(1, count, false);
-            this.blockEntity.setChanged();
-            sendDataToClient();
-
-            emcData.learnItem(item);
-
-            // Play sound
-            /* I personally find it annoy, but a setting to enable this by the player may be made in the future
-            level.playSound(null, blockEntity.getBlockPos(),
-                    SoundEvents.EXPERIENCE_ORB_PICKUP,
-                    SoundSource.BLOCKS,
-                    0.5f, isNewItem ? 1.5f : 1.0f); // Higher pitch for new items!
-             */
-
-        } else {
-            LOGGER.error("Failed to add EMC - overflow?");
-        }
-    }
-
-    private void processUnlearnSlot(ItemStack stack) {
-        // Safety checks
-        if (level.isClientSide() || player == null || stack.isEmpty()) {
-            return;
-        }
-
-        Item item = stack.getItem();
-        int count = stack.getCount();
-
-        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
-
-        Boolean isNewItem = !emcData.hasLearned(item);
-        if (isNewItem) {return;}
-        lastItemName2 = stack.getHoverName().getString(); // Get the item's display name
-        unlearnDisplayTimer = UNLEARN_DISPLAY_DURATION; // Show for 3 seconds
-        sendDataToClient();
-
-        emcData.unLearnItem(item);
-    }
-
-    /**
-     * Get the player's current EMC balance
-     */
-    public long getPlayerEMCBalance() {
-        return playerEMCBalance;
-    }
-
-    /**
-     * Get the EMC gained from the last burn
-     */
-    public long getLastEMCGained() {
-        return lastEMCGained;
-    }
-
-    /**
-     * Check if the last burned item was newly learned
-     */
-    public boolean wasLastItemNew() {
-        return lastItemWasNew;
-    }
-
-    /**
-     * Get the name of the last burned item
-     */
-    public String getLastItemName() {
-        return lastItemName;
-    }
-
-    public String getLastItemName2() {
-        return lastItemName2;
-    }
-
-    /**
-     * Check if we should display the "EMC Gained" message
-     */
+    // Getters for GUI display
+    public long getPlayerEMCBalance() { return playerEMCBalance; }
+    public long getLastEMCGained() { return lastEMCGained; }
+    public boolean wasLastItemNew() { return lastItemWasNew; }
+    public String getLastItemName() { return lastItemName; }
+    public String getLastItemName2() { return lastItemName2; }
     public boolean shouldDisplayEMCGained() {
-        return emcGainedDisplayTimer > 0;
+            return emcGainedDisplayTimer > 0 && emcGainedDisplayTimer > unlearnDisplayTimer;
     }
-
     public boolean shouldDisplayUnlearned() {
-        return unlearnDisplayTimer > 0;
+        return unlearnDisplayTimer > 0 && emcGainedDisplayTimer < unlearnDisplayTimer;
     }
 
-    /**
-     * Get the fade alpha for the EMC gained message (0.0 to 1.0)
-     * This creates a nice fade-out effect
-     */
     public float getEMCGainedAlpha() {
         if (emcGainedDisplayTimer <= 0) return 0.0f;
-        if (emcGainedDisplayTimer > 40) return 1.0f; // Fully visible for first 2 seconds
-        return emcGainedDisplayTimer / 40.0f; // Fade out over last second
+        if (emcGainedDisplayTimer > 40) return 1.0f;
+        return emcGainedDisplayTimer / 40.0f;
     }
 
     public float getUnlearnAlpha() {
         if (unlearnDisplayTimer <= 0) return 0.0f;
-        if (unlearnDisplayTimer > 40) return 1.0f; // Fully visible for first 2 seconds
-        return unlearnDisplayTimer / 40.0f; // Fade out over last second
+        if (unlearnDisplayTimer > 40) return 1.0f;
+        return unlearnDisplayTimer / 40.0f;
     }
 
     public void receiveDataFromServer(long emc, long gained, boolean wasNew,
@@ -387,5 +471,8 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         this.lastItemName2 = name2;
         this.emcGainedDisplayTimer = timer;
         this.unlearnDisplayTimer = uTimer;
+
+        // Update virtual slots on client side too!
+        updateVirtualSlots();
     }
 }

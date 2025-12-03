@@ -1,6 +1,7 @@
 package com.badiei.neoexchange.emc;
 
 import com.badiei.neoexchange.NeoExchange;
+import com.mojang.logging.LogUtils;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -10,6 +11,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+import org.slf4j.Logger;
 
 import java.util.Optional;
 
@@ -41,6 +43,7 @@ import java.util.Optional;
  */
 @EventBusSubscriber(modid = NeoExchange.MOD_ID, value = Dist.CLIENT)
 public class EMCTooltipHandler {
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     // Configuration - you can move these to a config file later
     private static final boolean SHOW_TOOLTIPS = true;
@@ -98,11 +101,18 @@ public class EMCTooltipHandler {
      * Add the basic EMC value line
      */
     private static void addBasicEMCLine(ItemTooltipEvent event, long value, int count, boolean isStack) {
+        if (event.getItemStack().isDamageableItem()) {
+            ItemStack item = event.getItemStack();
+            int currentDurability = item.getMaxDamage() - item.getDamageValue();
+            int maxDurability = item.getMaxDamage();
+            float durabilityRatio = (float) currentDurability / maxDurability;
+            value = (long) (value * durabilityRatio);
+        }
         String formattedValue = String.format("%,d", value);
-
         if (isStack && SHOW_ON_STACKS) {
             // Show both per-item and total for stacks
             long totalValue = value * count;
+
             String formattedTotal = String.format("%,d", totalValue);
 
             event.getToolTip().add(

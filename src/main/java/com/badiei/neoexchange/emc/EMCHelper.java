@@ -1,20 +1,20 @@
 package com.badiei.neoexchange.emc;
 
+import com.badiei.neoexchange.items.NeoStoneItem;
 import com.badiei.neoexchange.network.SyncEMCPacket;
-import net.minecraft.client.Minecraft;
+import com.badiei.neoexchange.network.SyncLearnedItemsPacket;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.entity.EntityLookup;
-import net.minecraft.world.level.entity.UUIDLookup;
 import net.neoforged.neoforge.network.PacketDistributor;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;
 
+import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * EMCHelper - Utility class for EMC operations
@@ -206,6 +206,11 @@ public class EMCHelper {
         return getPlayerEMC(player).getFormattedEMC();
     }
 
+    public static void syncALL(Player player) {
+        syncEMC(player);
+        syncLearnedItems(player);
+    }
+
     /**
      * Synchronize EMC from server to client
      * 
@@ -230,5 +235,53 @@ public class EMCHelper {
             LOGGER.debug("Synced EMC to client: {} for player {}", 
                 balance, player.getName().getString());
         }
+    }
+
+    /**
+     * Synchronize learned items from server to client
+     *
+     * @param player The player whose learned items should be synced
+     */
+    public static void syncLearnedItems(Player player) {
+        // Only send packets from the server side
+        if (player instanceof ServerPlayer serverPlayer) {
+            PlayerEMCData emcData = getPlayerEMC(player);
+
+            // Convert learned items to strings for transmission
+            List<String> itemStrings = emcData.getLearnedItems().stream()
+                    .map(ResourceLocation::toString)
+                    .toList();
+
+            // Create and send the packet
+            PacketDistributor.sendToPlayer(serverPlayer, new SyncLearnedItemsPacket(itemStrings));
+
+            LOGGER.debug("Synced {} learned items to client for player {}",
+                    itemStrings.size(), player.getName().getString());
+        }
+    }
+
+    public static List<Item> getLearnedItems(Player player) {
+        List<Item> list = List.of();
+        for (ItemStack stack : getPlayerEMC(player).getLearnedItemsList()) {
+            list.add(stack.getItem());
+        }
+        return list;
+    }
+
+    public static int getStoneMaxEMC(ItemStack stone) {
+        int maxEMC = 256;
+        if (stone != ItemStack.EMPTY) {
+            maxEMC = ((NeoStoneItem) stone.getItem()).getStoneType().getMaxEMC();
+        }
+        return maxEMC;
+    }
+
+    public static String getStoneMaxEMCFormatted(ItemStack stone) {
+        int maxEMC = 256;
+        if (stone != ItemStack.EMPTY) {
+            maxEMC = ((NeoStoneItem) stone.getItem()).getStoneType().getMaxEMC();
+        }
+        String display =  maxEMC == Integer.MAX_VALUE ? "∞" : String.valueOf(maxEMC);
+        return display;
     }
 }

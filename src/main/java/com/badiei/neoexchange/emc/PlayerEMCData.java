@@ -1,19 +1,17 @@
 package com.badiei.neoexchange.emc;
 
-import net.minecraft.core.HolderLookup;
+import com.badiei.neoexchange.screen.custom.NeoPlateScreen;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.storage.ValueInput;
-import net.minecraft.world.level.storage.ValueOutput;
-import net.neoforged.neoforge.common.util.ValueIOSerializable;
+import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -215,6 +213,7 @@ public class PlayerEMCData {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
         if (learnedItems.contains(itemId)) {return;}
         learnedItems.add(itemId);
+        EMCHelper.syncLearnedItems(Minecraft.getInstance().player);
     }
 
     public void unLearnItem(Item item) {
@@ -229,5 +228,17 @@ public class PlayerEMCData {
      */
     public Set<ResourceLocation> getLearnedItems() {
         return new HashSet<>(learnedItems);
+    }
+
+    public List<ItemStack> getLearnedItemsList() {
+        List<ItemStack> list = List.of();
+        for (ResourceLocation RL : learnedItems) {
+            list.add(BuiltInRegistries.ITEM.getValue(RL).getDefaultInstance());
+        }
+        return list;
+    }
+
+    public void clearLearneditemsList() {
+        learnedItems.clear();
     }
 }

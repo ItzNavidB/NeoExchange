@@ -63,6 +63,16 @@ public class NetworkHandler {
                 SyncNeoPlateDataPacket.STREAM_CODEC,
                 SyncNeoPlateDataPacket::handleClient
         );
+        registrar.playToClient(
+                SyncLearnedItemsPacket.PACKET_ID,
+                SyncLearnedItemsPacket.STREAM_CODEC,
+                SyncLearnedItemsPacket::handleClient
+        );
+        registrar.playToServer(
+                CreateItemPacket.TYPE,
+                CreateItemPacket.STREAM_CODEC,
+                CreateItemPacket::handle
+        );
 
         NeoExchange.LOGGER.info("Network packets registered successfully!");
     }
