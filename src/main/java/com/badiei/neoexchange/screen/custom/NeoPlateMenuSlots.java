@@ -118,9 +118,9 @@ public class NeoPlateMenuSlots {
      *
      * This is where all the magic happens:
      * - Filter by affordability
-     * - Filter by Neo Stone max EMC (future)
-     * - Filter by search text (future)
-     * - Sort by your preference
+     * - Filter by Neo Stone max EMC
+     * - Filter by search text ✨ NEW!
+     * - Sort by your preference (future)
      * - Paginate (future)
      *
      * The returned list is what gets mapped to the fixed grid of slots.
@@ -128,12 +128,15 @@ public class NeoPlateMenuSlots {
      * @param player The player
      * @param scrollOffset For pagination (0 = first page)
      * @param filterAffordableOnly If true, only show items player can afford
+     * @param maxEMC The maximum EMC value based on Neo Stone tier
+     * @param searchText Filter items by name (empty string = show all)
      * @return List of items to display in the grid
      */
     public static List<Item> buildDisplayList(Player player,
                                               int scrollOffset,
                                               boolean filterAffordableOnly,
-                                              int maxEMC) {
+                                              int maxEMC,
+                                              String searchText) {
 
         // Get ALL learned items
         List<Item> allLearnedItems = getLearnedItems(player);
@@ -145,21 +148,30 @@ public class NeoPlateMenuSlots {
         for (Item item : allLearnedItems) {
             long itemEMC = EMCHelper.getItemEMC(item).orElse(0L);
 
-            // Check affordability
+            // Filter 1: Check affordability
             if (filterAffordableOnly && playerBalance < itemEMC) {
                 continue; // Skip unaffordable items
             }
 
+            // Filter 2: Check Neo Stone max EMC
             if (maxEMC < itemEMC) {
                 if (!(item instanceof NeoStoneItem)) {
-                    continue; // Skip unaffordable items
+                    continue; // Skip items above stone tier
                 }
             }
-            // Future filters would go here:
-            // - Neo Stone max EMC check
-            // - Search text match
-            // - etc.
 
+            // Filter 3: Check search text match
+            if (searchText != null && !searchText.isEmpty()) {
+                // Get the item's display name and convert to lowercase
+                String itemName = new ItemStack(item).getHoverName().getString().toLowerCase();
+                
+                // If the item name doesn't contain the search text, skip it
+                if (!itemName.contains(searchText)) {
+                    continue; // This item doesn't match the search
+                }
+            }
+
+            // Item passed all filters - add it to the display list!
             displayList.add(item);
         }
 

@@ -38,10 +38,8 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
     private static final int GRID_ROWS = 5;      // 6 visible rows
     private static final int SLOT_SIZE = 18;     // Each slot is 18x18 pixels
 
-    //Data for the grid
-    private List<Item> availableItems = new ArrayList<>(); // Items player can extract
-    private int scrollOffset = 0; // Which row we're scrolled to
-    private String searchText = ""; // Current search filter
+    // Search bar widget
+    private net.minecraft.client.gui.components.EditBox searchBox;
 
     public NeoPlateScreen(NeoPlateMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -51,6 +49,120 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         this.titleLabelX = titleLabelX + 8 + Integer.MAX_VALUE;
         this.inventoryLabelX = Integer.MAX_VALUE;
         this.inventoryLabelY = Integer.MAX_VALUE;
+    }
+
+    @Override
+    protected void init() {
+        super.init(); // Always call super first!
+
+        // Calculate position for search box
+        // We'll place it above the virtual item grid
+        int x = (width - imageWidth) / 2;  // Center the GUI
+        int y = (height - imageHeight) / 2;
+        
+        // Search box positioned above the grid
+        int searchBoxX = x + GRID_START_X;
+        int searchBoxY = y + GRID_START_Y - 14;  // 14 pixels above the grid
+        int searchBoxWidth = (GRID_COLUMNS * SLOT_SIZE) - 2;  // Span the width of the grid
+        int searchBoxHeight = 12;  // Standard height for text boxes
+
+        // Create the search box
+        searchBox = new net.minecraft.client.gui.components.EditBox(
+                this.font,  // Use the screen's font
+                searchBoxX,
+                searchBoxY,
+                searchBoxWidth,
+                searchBoxHeight,
+                Component.literal("Search Items")  // Tooltip text
+        );
+
+        // Configure the search box
+        searchBox.setMaxLength(50);  // Max 50 characters
+        searchBox.setBordered(true);  // Show a border
+        searchBox.setVisible(true);   // Make it visible
+        searchBox.setTextColor(0xFFFFFFFF);  // White text
+        searchBox.setHint(Component.literal("Search..."));  // Placeholder text
+
+        // Add a listener that triggers when text changes
+        searchBox.setResponder(this::onSearchTextChanged);
+
+        // Add the widget to the screen so it gets rendered and handles input
+        this.addRenderableWidget(searchBox);
+
+        LOGGER.info("Search box initialized at ({}, {}) with width {}", searchBoxX, searchBoxY, searchBoxWidth);
+    }
+
+    /**
+     * Called whenever the player types in the search box
+     * This method updates the menu's search filter and refreshes the grid
+     */
+    private void onSearchTextChanged(String newText) {
+        // Update client-side immediately for responsive UI
+        menu.setSearchText(newText);
+        
+        // Send packet to server to sync the search filter
+        // This prevents desync when clicking items!
+        if (this.minecraft != null && this.minecraft.getConnection() != null) {
+            this.minecraft.getConnection().send(
+                    new com.badiei.neoexchange.network.UpdateSearchTextPacket(newText)
+            );
+        }
+        
+        LOGGER.debug("Search text changed to: '{}' (synced to server)", newText);
+    }
+
+    /**
+     * Override key pressed to prevent inventory key from closing GUI
+     * when typing in the search box
+     * 
+     * This is CRITICAL for good UX - without this, typing 'E' in the search
+     * box would close your inventory!
+     */
+    @Override
+    public boolean keyPressed(net.minecraft.client.input.KeyEvent keyEvent) {
+        // If search box is focused and has text, let it handle ALL keys
+        // This prevents inventory hotkeys from interfering with typing
+        if (searchBox != null && searchBox.isFocused()) {
+            // Let the search box handle the key first
+            // EditBox also uses KeyEvent now in 1.21.10
+            if (searchBox.keyPressed(keyEvent)) {
+                return true; // Search box handled it, we're done!
+            }
+            
+            // Special case: Don't let ESC or inventory key close the GUI
+            // when the search box is focused (unless it's empty)
+            if (searchBox.getValue().length() >= 0) {
+                // Check if this is the inventory key (usually 'E')
+                var key = com.mojang.blaze3d.platform.InputConstants.getKey(keyEvent);
+                if (this.minecraft != null && this.minecraft.options.keyInventory.isActiveAndMatches(key)) {
+                    return true; // Consume the key, don't close GUI
+                }
+            }
+        }
+        
+        // Otherwise, let the parent handle it (for ESC, etc.)
+        return super.keyPressed(keyEvent);
+    }
+
+    /**
+     * Handle mouse clicks on the screen
+     * Right-click on search box = clear it
+     */
+    @Override
+    public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent mouseEvent, boolean hasBeenHandled) {
+        // Check if right-click (button 1) on the search box
+        if (mouseEvent.button() == 1 && searchBox != null && searchBox.isMouseOver(mouseEvent.x(), mouseEvent.y())) {
+            searchBox.setValue("");  // Clear the search box
+            searchBox.setFocused(true);  // Keep it focused for convenience
+            return true;  // We handled this click
+        }
+        if (mouseEvent.button() == 0 && searchBox != null && !searchBox.isMouseOver(mouseEvent.x(), mouseEvent.y())) {
+            searchBox.setFocused(false);  // Keep it focused for convenience
+            return true;  // We handled this click
+        }
+        
+        // Otherwise, let parent handle it (for clicking slots, etc.)
+        return super.mouseClicked(mouseEvent, hasBeenHandled);
     }
 
     @Override
@@ -111,6 +223,21 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
             int gainedY = y + 20;
 
             guiGraphics.drawString(font, gainedText, gainedX, gainedY, color, true);
+        }
+        if (menu.shouldDisplayEMCLost()) {
+            long lost = menu.getLastEMCLost();
+            String lostText = String.format("-%,d EMC", lost);
+
+            // Calculate alpha for fade effect
+            float alpha = menu.getEMCLostAlpha();
+            int alphaInt = (int)(alpha * 255);
+            int color = (alphaInt << 24) | 0xFF5555; // Green color with alpha
+
+            // Position in center of GUI
+            int lostX = x + 8;
+            int lostY = y + 20;
+
+            guiGraphics.drawString(font, lostText, lostX, lostY, color, true);
         }
 
         // === 3. ITEM LEARNED (Below EMC gained, appears for new items) ===

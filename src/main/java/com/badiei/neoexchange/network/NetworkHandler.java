@@ -68,10 +68,17 @@ public class NetworkHandler {
                 SyncLearnedItemsPacket.STREAM_CODEC,
                 SyncLearnedItemsPacket::handleClient
         );
+        
+        // Client-to-Server packets
         registrar.playToServer(
                 CreateItemPacket.TYPE,
                 CreateItemPacket.STREAM_CODEC,
                 CreateItemPacket::handle
+        );
+        registrar.playToServer(
+                UpdateSearchTextPacket.TYPE,
+                UpdateSearchTextPacket.STREAM_CODEC,
+                UpdateSearchTextPacket::handle
         );
 
         NeoExchange.LOGGER.info("Network packets registered successfully!");

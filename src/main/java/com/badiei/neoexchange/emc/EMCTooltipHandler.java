@@ -16,14 +16,14 @@ import org.slf4j.Logger;
 import java.util.Optional;
 
 /**
- * EMCTooltipHandler - Advanced version with extra features
+ * EMCTooltipHandler - Advanced version with durability support
  *
  * Features:
  * - Shows EMC value on item hover
  * - Shows total EMC for stacks
+ * - Automatically adjusts value based on item durability
  * - Hold SHIFT for additional EMC information
  * - Configurable styling and format
- * - Shows if item is learned (for future learning system)
  *
  * Example tooltips:
  *
@@ -35,11 +35,9 @@ import java.util.Optional;
  * Diamond (x64)
  * EMC: 8,192 ✦ (524,288 ✦ total)
  *
- * With SHIFT held:
- * Diamond
- * EMC: 8,192 ✦
- * └ Can be transmuted
- * └ Stack value: 524,288 ✦
+ * Damaged Item:
+ * Diamond Pickaxe (50% durability)
+ * EMC: 4,096 ✦ (reduced from 8,192 ✦ due to damage)
  */
 @EventBusSubscriber(modid = NeoExchange.MOD_ID, value = Dist.CLIENT)
 public class EMCTooltipHandler {
@@ -50,6 +48,8 @@ public class EMCTooltipHandler {
     private static final boolean SHOW_ON_STACKS = true;
     private static final boolean SHOW_ADVANCED_ON_SHIFT = true;
     private static final String EMC_SYMBOL = "";
+    private static final String EMC_REPAIRED_SYMBOL = "⚒";
+
 
     @SubscribeEvent
     public static void onItemTooltip(ItemTooltipEvent event) {
@@ -65,8 +65,10 @@ public class EMCTooltipHandler {
             return;
         }
 
-        // Get the EMC value for this item
-        Optional<Long> emcValue = EMCHelper.getItemEMC(stack.getItem());
+        // Get the durability-adjusted EMC value for this stack
+        // This automatically handles damaged items, giving them less value
+        Optional<Long> emcValue = EMCHelper.getStackEMCWithDurability(stack);
+        Optional<Long> emcValue2 = EMCHelper.getStackEMC(stack);
 
         // If the item has no EMC value, optionally show "No EMC Value"
         if (emcValue.isEmpty()) {
@@ -77,8 +79,11 @@ public class EMCTooltipHandler {
             // }
             return;
         }
+        if (emcValue2.isEmpty()) {return;}
 
-        long value = emcValue.get();
+        // The value we get here is already adjusted for durability AND stack count
+        long totalValue = emcValue.get();
+        long totalValue2 = emcValue2.get();
         boolean isStack = stack.getCount() > 1;
         boolean shiftDown = Minecraft.getInstance().hasShiftDown();
 
@@ -89,30 +94,30 @@ public class EMCTooltipHandler {
         }
 
         // Basic EMC line - always show
-        addBasicEMCLine(event, value, stack.getCount(), isStack);
+        // Note: We need to pass the per-item value for proper display
+        long perItemValue = totalValue / stack.getCount();
+        long perItemValue2 = totalValue2 / stack.getCount();
+
 
         // Advanced info when holding shift
         if (shiftDown && SHOW_ADVANCED_ON_SHIFT) {
-            addAdvancedEMCInfo(event, value, stack.getCount());
+            addAdvancedEMCInfo(event, perItemValue2, stack.getCount(), isStack, totalValue2);
+        }
+        else {
+            addBasicEMCLine(event, perItemValue, stack.getCount(), isStack, totalValue);
         }
     }
 
     /**
      * Add the basic EMC value line
+     *
+     * Now simplified - the durability calculation is handled by EMCHelper!
      */
-    private static void addBasicEMCLine(ItemTooltipEvent event, long value, int count, boolean isStack) {
-        if (event.getItemStack().isDamageableItem()) {
-            ItemStack item = event.getItemStack();
-            int currentDurability = item.getMaxDamage() - item.getDamageValue();
-            int maxDurability = item.getMaxDamage();
-            float durabilityRatio = (float) currentDurability / maxDurability;
-            value = (long) (value * durabilityRatio);
-        }
-        String formattedValue = String.format("%,d", value);
+    private static void addBasicEMCLine(ItemTooltipEvent event, long perItemValue, int count, boolean isStack, long totalValue) {
+        String formattedValue = String.format("%,d", perItemValue);
+
         if (isStack && SHOW_ON_STACKS) {
             // Show both per-item and total for stacks
-            long totalValue = value * count;
-
             String formattedTotal = String.format("%,d", totalValue);
 
             event.getToolTip().add(
@@ -145,43 +150,40 @@ public class EMCTooltipHandler {
     /**
      * Add advanced EMC information (shown when holding SHIFT)
      */
-    private static void addAdvancedEMCInfo(ItemTooltipEvent event, long value, int count) {
-        // Show transmutation status
-        /*
-        event.getToolTip().add(
-                Component.literal("  └ ")
-                        .withStyle(ChatFormatting.DARK_GRAY)
-                        .append(Component.literal("Can be transmuted")
-                                .withStyle(ChatFormatting.GREEN, ChatFormatting.ITALIC))
-        );
-        */
+    private static void addAdvancedEMCInfo(ItemTooltipEvent event, long perItemValue, int count, boolean isStack, long totalValue) {
+        String formattedValue = String.format("%,d", perItemValue);
+        String EMC_REPAIRED_SYMBOL = "⚒";
+        if (!event.getItemStack().isDamageableItem()) {EMC_REPAIRED_SYMBOL = "";}
 
-        // Show conversion info
-        /*
-        if (count > 1) {
-            long totalValue = value * count;
+        if (isStack && SHOW_ON_STACKS) {
+            // Show both per-item and total for stacks
             String formattedTotal = String.format("%,d", totalValue);
 
             event.getToolTip().add(
-                    Component.literal("  └ ")
-                            .withStyle(ChatFormatting.DARK_GRAY)
-                            .append(Component.literal("Stack worth: " + formattedTotal + EMC_SYMBOL)
-                                    .withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC))
+                    Component.literal("EMC: ")
+                            .withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(formattedValue)
+                                    .withStyle(ChatFormatting.YELLOW))
+                            .append(Component.literal(EMC_SYMBOL)
+                                    .withStyle(ChatFormatting.GOLD))
+                            .append(Component.literal(" (")
+                                    .withStyle(ChatFormatting.DARK_GRAY))
+                            .append(Component.literal(formattedTotal + EMC_SYMBOL)
+                                    .withStyle(ChatFormatting.YELLOW))
+                            .append(Component.literal(" total)")
+                                    .withStyle(ChatFormatting.DARK_GRAY))
+            );
+        } else {
+            // Single item or stack display disabled
+            event.getToolTip().add(
+                    Component.literal("EMC: ")
+                            .withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(formattedValue)
+                                    .withStyle(ChatFormatting.YELLOW))
+                            .append(Component.literal(EMC_REPAIRED_SYMBOL)
+                                    .withStyle(ChatFormatting.GOLD))
             );
         }
-         */
-
-        // Show how many of this item you could buy with common materials
-        // Example: "≈ 8 diamonds" or "≈ 256 cobblestone"
-        //addComparisonLine(event, value);
-
-        // Future: Show if item is "learned" for transmutation
-        // event.getToolTip().add(
-        //     Component.literal("  └ ")
-        //         .withStyle(ChatFormatting.DARK_GRAY)
-        //         .append(Component.literal("Learned")
-        //             .withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.ITALIC))
-        // );
     }
 
     /**

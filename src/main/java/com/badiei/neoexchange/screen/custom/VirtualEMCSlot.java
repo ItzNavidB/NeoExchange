@@ -3,12 +3,7 @@ package com.badiei.neoexchange.screen.custom;
 import com.badiei.neoexchange.emc.EMCHelper;
 import com.badiei.neoexchange.emc.PlayerEMCData;
 import com.mojang.logging.LogUtils;
-import net.minecraft.client.renderer.item.ItemStackRenderState;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.Slot;
@@ -16,8 +11,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.slf4j.Logger;
-
-import java.util.List;
 
 /**
  * VirtualEMCSlot - A slot that displays an item from a dynamic list
@@ -44,6 +37,34 @@ public class VirtualEMCSlot extends Slot {
     private Item currentItem = Items.AIR;
     private int currentAmount = 0;
 
+    // Callback for EMC spending events
+    private EMCSpentCallback emcSpentCallback = null;
+
+    /**
+     * Callback interface for EMC spending events
+     * This allows the menu to be notified when EMC is spent
+     */
+    public interface EMCSpentCallback {
+        void onEMCSpent(long amount, String itemName, int count);
+    }
+
+    /**
+     * Purchase result - contains info about the transaction
+     */
+    public static class PurchaseResult {
+        public final boolean success;
+        public final long emcSpent;
+        public final int itemCount;
+        public final String itemName;
+
+        public PurchaseResult(boolean success, long emcSpent, int itemCount, String itemName) {
+            this.success = success;
+            this.emcSpent = emcSpent;
+            this.itemCount = itemCount;
+            this.itemName = itemName;
+        }
+    }
+
     /**
      * Create a virtual EMC slot that shows items from a list
      *
@@ -61,6 +82,14 @@ public class VirtualEMCSlot extends Slot {
 
         // Start empty
         this.container.setItem(0, ItemStack.EMPTY);
+    }
+
+    /**
+     * Set callback for EMC spending events
+     * The menu calls this to get notified when EMC is spent
+     */
+    public void setEMCSpentCallback(EMCSpentCallback callback) {
+        this.emcSpentCallback = callback;
     }
 
     /**
@@ -155,13 +184,58 @@ public class VirtualEMCSlot extends Slot {
         if (currentItem == Items.AIR) {
             return; // Nothing to take
         }
+
+        // Process the EMC transaction and get result
+        PurchaseResult result = processEMCPurchaseWithResult(player, stack);
+
+        // Notify menu if we have a callback (for EMC loss display)
+        if (result.success && emcSpentCallback != null && !player.level().isClientSide()) {
+            emcSpentCallback.onEMCSpent(result.emcSpent, result.itemName, result.itemCount);
+        }
+
+        // Let vanilla Minecraft handle giving the item to the player
+        super.onTake(player, stack);
+
+        // The menu will handle updating the display after EMC changes
+    }
+
+    /**
+     * Process an EMC purchase and return detailed result
+     * 
+     * This is the core logic for buying items with EMC. It's separated into
+     * its own method so it can be called from multiple places:
+     * - onTake() for normal clicks
+     * - NeoPlateMenu.quickMoveStack() for shift-clicks
+     * 
+     * How it works:
+     * 1. Validates the item count (can't exceed what's affordable)
+     * 2. Calculates total EMC cost
+     * 3. Checks if player has enough EMC
+     * 4. Deducts EMC from player
+     * 5. Syncs new balance to client
+     * 6. Logs the transaction
+     * 7. Returns detailed result (for display)
+     * 
+     * @param player The player making the purchase
+     * @param stack The item stack being purchased (amount will be adjusted if needed)
+     * @return PurchaseResult with transaction details
+     */
+    public PurchaseResult processEMCPurchaseWithResult(Player player, ItemStack stack) {
+        // Validation: Make sure we have an item to purchase
+        if (currentItem == Items.AIR) {
+            LOGGER.warn("Attempted to purchase from empty slot");
+            return new PurchaseResult(false, 0, 0, "");
+        }
+
         // Ensure the stack count is valid
+        // Can't buy more than: current affordable amount OR item max stack size
         int actualCount = Math.min(stack.getCount(),
                 Math.min(currentAmount, stack.getMaxStackSize()));
+        
+        // Update stack to the actual amount
         stack.setCount(actualCount);
 
-
-        // Only process on server side
+        // Only process on server side (client just displays)
         if (!player.level().isClientSide()) {
             // Calculate total EMC cost
             long emcPerItem = EMCHelper.getItemEMC(currentItem).orElse(0L);
@@ -170,45 +244,111 @@ public class VirtualEMCSlot extends Slot {
             // Get player's EMC data
             PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
 
-            // Deduct EMC
+            // Check if they can afford it
             if (emcData.hasEMC(totalCost)) {
+                // Attempt to deduct EMC
                 boolean success = EMCHelper.removeEMC(player, totalCost);
 
                 if (success) {
                     // Sync new EMC balance to client
                     EMCHelper.syncEMC((ServerPlayer) player);
 
-                    // Play success sound
-                    player.level().playSound(
-                            null,
-                            player.blockPosition(),
-                            SoundEvents.EXPERIENCE_ORB_PICKUP,
-                            SoundSource.PLAYERS,
-                            0.5f,
-                            1.2f
-                    );
-
-                    LOGGER.info("Player {} extracted {} x{} for {} EMC",
+                    LOGGER.info("Player {} purchased {} x{} for {} EMC (new balance: {})",
                             player.getName().getString(),
                             currentItem,
                             actualCount,
-                            totalCost);
+                            totalCost,
+                            emcData.getEMC());
+
+                    // Return success with purchase details
+                    return new PurchaseResult(
+                        true, 
+                        totalCost, 
+                        actualCount,
+                        new ItemStack(currentItem).getHoverName().getString()
+                    );
                 } else {
+                    // EMC deduction failed (shouldn't happen if hasEMC returned true)
                     LOGGER.error("Failed to deduct {} EMC from player {}",
                             totalCost,
                             player.getName().getString());
+                    return new PurchaseResult(false, 0, 0, "");
                 }
             } else {
-                LOGGER.warn("Player {} tried to take {} without enough EMC",
+                // Player doesn't have enough EMC
+                LOGGER.warn("Player {} tried to purchase {} x{} without enough EMC (has: {}, needs: {})",
                         player.getName().getString(),
-                        stack);
+                        currentItem,
+                        actualCount,
+                        emcData.getEMC(),
+                        totalCost);
+                return new PurchaseResult(false, 0, 0, "");
             }
         }
 
-        // Let vanilla Minecraft handle giving the item to the player
-        super.onTake(player, stack);
+        // On client side, assume success (server will validate)
+        return new PurchaseResult(true, 0, actualCount, "");
+    }
 
-        // The menu will handle updating the display after EMC changes
+    /**
+     * Process an EMC purchase - LEGACY METHOD for backward compatibility
+     * 
+     * This is kept for any code that doesn't need the detailed result.
+     * It calls the new method but only returns boolean success/failure.
+     * 
+     * @param player The player making the purchase
+     * @param stack The item stack being purchased
+     * @return true if purchase was successful, false if it failed
+     */
+    public boolean processEMCPurchase(Player player, ItemStack stack) {
+        return processEMCPurchaseWithResult(player, stack).success;
+    }
+
+    /**
+     * Calculate how many of this item the player can afford
+     * 
+     * This is useful for shift-click logic where you want to know
+     * the maximum amount the player can purchase.
+     * 
+     * @param player The player
+     * @return Maximum affordable count (0 if can't afford any, or slot is empty)
+     */
+    public int getAffordableCount(Player player) {
+        if (currentItem == Items.AIR) {
+            return 0;
+        }
+
+        // Get EMC per item
+        long emcPerItem = EMCHelper.getItemEMC(currentItem).orElse(0L);
+        if (emcPerItem <= 0) {
+            return 0; // Item has no EMC value
+        }
+
+        // Get player's current EMC
+        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+        long playerEMC = emcData.getEMC();
+
+        // Calculate max affordable based on EMC
+        long maxAffordableByEMC = playerEMC / emcPerItem;
+
+        // Can't afford more than what's displayed, item max stack size, or int max
+        int maxAffordable = (int) Math.min(maxAffordableByEMC, Integer.MAX_VALUE);
+        maxAffordable = Math.min(maxAffordable, currentAmount);
+        maxAffordable = Math.min(maxAffordable, currentItem.getDefaultMaxStackSize());
+
+        return maxAffordable;
+    }
+
+    /**
+     * Get the EMC cost for a single item in this slot
+     * 
+     * @return EMC cost per item, or 0 if no item or no EMC value
+     */
+    public long getEMCPerItem() {
+        if (currentItem == Items.AIR) {
+            return 0;
+        }
+        return EMCHelper.getItemEMC(currentItem).orElse(0L);
     }
 
     /**

@@ -82,7 +82,7 @@ public class NeoStoneItem extends Item {
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context, @NotNull TooltipDisplay tooltipDisplay, @NotNull Consumer<Component> tooltipAdder, @NotNull TooltipFlag flag) {
         if (Minecraft.getInstance().hasShiftDown()) {
             // Add tier information
-            tooltipAdder.accept(Component.literal("\nTier " + stoneType.getTier())
+            tooltipAdder.accept(Component.literal("Tier " + stoneType.getTier())
                     .withStyle(ChatFormatting.GRAY));
             
             // Add what this stone unlocks (specific to each tier)

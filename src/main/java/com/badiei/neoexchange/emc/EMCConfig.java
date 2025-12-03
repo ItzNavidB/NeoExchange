@@ -10,43 +10,72 @@ import com.mojang.logging.LogUtils;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 
 /**
- * EMCConfig - Handles loading/saving EMC values from JSON files
+ * EMCConfig - Flexible EMC config loader with Excel support
  *
- * This class manages two JSON files:
- * 1. emc_base_values.json - Your manually defined values (INPUT)
- * 2. emc_computed_values.json - All calculated values (OUTPUT)
+ * This class supports MULTIPLE loading methods:
+ * 1. JSON_ONLY: Traditional JSON loading (fastest, production)
+ * 2. EXCEL_DIRECT: Load directly from Excel (development, real-time)
+ * 3. EXCEL_WITH_CACHE: Load from Excel, cache to JSON (balanced)
+ * 4. AUTO: Automatically choose best mode (recommended!)
  *
- * The base values are your "anchor points" - items you manually assign
- * values to. The calculator then figures out everything else based on
- * crafting recipes, smelting, etc.
+ * Change the LOAD_MODE constant below to switch between modes.
  *
- * JSON Format:
- * {
- *   "minecraft:diamond": 8192,
- *   "minecraft:iron_ingot": 256,
- *   "neoexchange:neo_stone": 512
- * }
+ * Files managed:
+ * - emc_base_values.json - Base values (packaged in mod)
+ * - emc_custom_values.json - User overrides (config directory)
+ * - emc_computed_values.json - Calculated values (config directory)
+ * - emc_values.xlsx - Excel source (optional, for development)
  */
 public class EMCConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder()
-            .setPrettyPrinting()  // Makes JSON readable
-            .disableHtmlEscaping() // Prevents weird character escaping
+            .setPrettyPrinting()
+            .disableHtmlEscaping()
             .create();
 
+    // ============= CONFIGURATION =============
+    /**
+     * Change this to switch loading modes!
+     * 
+     * - JSON_ONLY: Use JSON only (fastest, production)
+     * - EXCEL_DIRECT: Load from Excel every time (development)
+     * - EXCEL_WITH_CACHE: Load Excel, cache to JSON (balanced)
+     * - AUTO: Automatically choose best mode (recommended!)
+     */
+    private static final LoadMode LOAD_MODE = LoadMode.EXCEL_DIRECT;
+    // =========================================
+
+    /**
+     * Loading mode enum
+     */
+    public enum LoadMode {
+        /** Load only from JSON (fastest, production) */
+        JSON_ONLY,
+        
+        /** Load directly from Excel every time (real-time updates) */
+        EXCEL_DIRECT,
+        
+        /** Load from Excel, save to JSON for caching (balanced) */
+        EXCEL_WITH_CACHE,
+        
+        /** Automatically choose best mode based on environment */
+        AUTO
+    }
+
     // File paths
-    private static final String BASE_VALUES_FILE = "/data/neoexchange/emc/emc_base_values.json";
+    private static final String BASE_VALUES_JSON = "/data/neoexchange/emc/emc_base_values.json";
+    private static final String EXCEL_FILENAME = "emc_values.xlsx";
     private static final String CUSTOM_VALUES_FILE = "emc_custom_values.json";
     private static final String COMPUTED_VALUES_FILE = "emc_computed_values.json";
 
-    // The actual data storage
+    // Data storage
     private final Map<ResourceLocation, Long> baseValues = new HashMap<>();
     private final Map<ResourceLocation, Long> computedValues = new HashMap<>();
     private final List<Item> restValues = new ArrayList<>(List.of());
-
     private final Path configDir;
 
     /**
@@ -56,7 +85,6 @@ public class EMCConfig {
     public EMCConfig(Path configDir) {
         this.configDir = configDir;
 
-        // Create the config directory if it doesn't exist
         try {
             Files.createDirectories(configDir);
         } catch (IOException e) {
@@ -65,14 +93,315 @@ public class EMCConfig {
     }
 
     /**
+     * Load base EMC values using the configured mode
+     * 
+     * This automatically uses the right loading method based on LOAD_MODE.
+     * After loading base values, custom overrides are always applied.
+     *
+     * @return true if successful
+     */
+    public boolean loadBaseValues() {
+        baseValues.clear();
+        
+        LoadMode actualMode = determineLoadMode();
+        LOGGER.info("Loading EMC values using mode: {}", actualMode);
+        
+        boolean success = false;
+        
+        switch (actualMode) {
+            case JSON_ONLY:
+                success = loadFromJSON();
+                break;
+                
+            case EXCEL_DIRECT:
+                success = loadFromExcelDirect();
+                if (!success) {
+                    LOGGER.warn("Excel loading failed, falling back to JSON");
+                    success = loadFromJSON();
+                }
+                break;
+                
+            case EXCEL_WITH_CACHE:
+                success = loadFromExcelWithCache();
+                if (!success) {
+                    LOGGER.warn("Excel loading failed, falling back to JSON");
+                    success = loadFromJSON();
+                }
+                break;
+                
+            default:
+                LOGGER.error("Unknown load mode: {}", actualMode);
+                success = loadFromJSON();
+        }
+        
+        if (success) {
+            // Always load custom overrides after base values
+            ensureCustomFileExists();
+            loadCustomValues();
+            LOGGER.info("Loaded total of {} EMC base values", baseValues.size());
+        }
+        
+        return success;
+    }
+    
+    /**
+     * Determine which load mode to actually use
+     * Implements the AUTO mode logic
+     */
+    private LoadMode determineLoadMode() {
+        if (LOAD_MODE != LoadMode.AUTO) {
+            return LOAD_MODE;
+        }
+        
+        // AUTO mode - intelligent detection
+        LOGGER.info("AUTO mode: Detecting best loading method...");
+        
+        boolean isDev = isDevEnvironment();
+        Path excelPath = getExcelPath();
+        boolean excelExists = excelPath != null && Files.exists(excelPath);
+        
+        // In development with Excel? Use direct loading for instant updates
+        if (isDev && excelExists) {
+            LOGGER.info("  → Development + Excel exists: Using EXCEL_DIRECT");
+            return LoadMode.EXCEL_DIRECT;
+        }
+        
+        // Excel exists and is newer than JSON? Re-import it
+        if (excelExists) {
+            Path jsonPath = getJSONPath();
+            if (jsonPath != null && Files.exists(jsonPath)) {
+                try {
+                    long excelTime = Files.getLastModifiedTime(excelPath).toMillis();
+                    long jsonTime = Files.getLastModifiedTime(jsonPath).toMillis();
+                    
+                    if (excelTime > jsonTime) {
+                        LOGGER.info("  → Excel newer than JSON: Using EXCEL_WITH_CACHE");
+                        return LoadMode.EXCEL_WITH_CACHE;
+                    }
+                } catch (IOException e) {
+                    LOGGER.warn("Failed to check file times", e);
+                }
+            }
+        }
+        
+        // Default: Use JSON (fastest)
+        LOGGER.info("  → Using JSON_ONLY (fastest)");
+        return LoadMode.JSON_ONLY;
+    }
+    
+    /**
+     * Get path to Excel file (if exists in resources or config)
+     */
+    private Path getExcelPath() {
+        // Check development resources first
+        Path projectRoot = Paths.get("").toAbsolutePath();
+        Path devPath = projectRoot.resolve("src/main/resources/data/neoexchange/emc/" + EXCEL_FILENAME);
+        
+        if (Files.exists(devPath)) {
+            return devPath;
+        }
+        
+        // Check config directory
+        Path configPath = configDir.resolve(EXCEL_FILENAME);
+        if (Files.exists(configPath)) {
+            return configPath;
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Get path to JSON file (if exists in resources)
+     */
+    private Path getJSONPath() {
+        Path projectRoot = Paths.get("").toAbsolutePath();
+        Path devPath = projectRoot.resolve("src/main/resources/data/neoexchange/emc/emc_base_values.json");
+        
+        if (Files.exists(devPath)) {
+            return devPath;
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Check if we're in development environment
+     */
+    private boolean isDevEnvironment() {
+        Path projectRoot = Paths.get("").toAbsolutePath();
+        Path resourcesDir = projectRoot.resolve("src/main/resources");
+        return Files.exists(resourcesDir) && Files.isDirectory(resourcesDir);
+    }
+
+    /**
+     * LOADING METHOD 1: Load from JSON
+     * Traditional loading from JSON resources (fastest)
+     */
+    private boolean loadFromJSON() {
+        LOGGER.info("Loading from JSON...");
+        
+        try (InputStream in = getClass().getResourceAsStream(BASE_VALUES_JSON)) {
+            if (in == null) {
+                LOGGER.error("Could not find JSON resource: {}", BASE_VALUES_JSON);
+                return false;
+            }
+            
+            Reader reader = new InputStreamReader(in);
+            JsonObject json = GSON.fromJson(reader, JsonObject.class);
+
+            if (json == null) {
+                LOGGER.error("JSON resource is empty or invalid");
+                return false;
+            }
+
+            // Handle both old format (flat) and new format (with "values" key)
+            JsonObject values = json.has("values") ? json.getAsJsonObject("values") : json;
+            int loadedCount = parseJSONValues(values);
+            
+            LOGGER.info("✓ Loaded {} values from JSON", loadedCount);
+            return true;
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to load from JSON", e);
+            return false;
+        }
+    }
+
+    /**
+     * LOADING METHOD 2: Load directly from Excel
+     * Load from Excel file in real-time (see changes immediately)
+     */
+    private boolean loadFromExcelDirect() {
+        LOGGER.info("Loading directly from Excel...");
+        
+        Path excelPath = getExcelPath();
+        if (excelPath == null) {
+            LOGGER.warn("Excel file not found");
+            return false;
+        }
+        
+        try {
+            LOGGER.info("Reading Excel: {}", excelPath);
+            
+            // Use EMCExcelImporter to read the Excel file
+            Map<String, Long> excelValues = EMCExcelImporter.readExcelToMap(excelPath);
+            
+            if (excelValues.isEmpty()) {
+                LOGGER.warn("No values found in Excel");
+                return false;
+            }
+            
+            // Convert to ResourceLocation map
+            int loadedCount = 0;
+            for (Map.Entry<String, Long> entry : excelValues.entrySet()) {
+                try {
+                    ResourceLocation itemLocation = ResourceLocation.parse(entry.getKey());
+                    baseValues.put(itemLocation, entry.getValue());
+                    loadedCount++;
+                } catch (Exception e) {
+                    LOGGER.warn("Invalid item ID from Excel: {}", entry.getKey());
+                }
+            }
+            
+            LOGGER.info("✓ Loaded {} values directly from Excel", loadedCount);
+            return true;
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to load from Excel", e);
+            return false;
+        }
+    }
+
+    /**
+     * LOADING METHOD 3: Load from Excel with JSON caching
+     * Load from Excel, then save to JSON for next time (best of both worlds)
+     */
+    private boolean loadFromExcelWithCache() {
+        LOGGER.info("Loading from Excel with caching...");
+        
+        Path excelPath = getExcelPath();
+        if (excelPath == null) {
+            LOGGER.warn("Excel file not found");
+            return false;
+        }
+        
+        Path jsonPath = getJSONPath();
+        if (jsonPath == null) {
+            jsonPath = Paths.get("").toAbsolutePath()
+                .resolve("src/main/resources/data/neoexchange/emc/emc_base_values.json");
+        }
+        
+        try {
+            LOGGER.info("Reading Excel: {}", excelPath);
+            LOGGER.info("Will cache to: {}", jsonPath);
+            
+            // Import Excel to JSON
+            boolean importSuccess = EMCExcelImporter.importFromExcel(excelPath, jsonPath);
+            
+            if (!importSuccess) {
+                LOGGER.error("Failed to import Excel");
+                return false;
+            }
+            
+            // Now load the newly created JSON
+            boolean loadSuccess = loadFromJSON();
+            
+            if (loadSuccess) {
+                LOGGER.info("✓ Loaded from Excel and cached to JSON");
+            }
+            
+            return loadSuccess;
+            
+        } catch (Exception e) {
+            LOGGER.error("Failed to load from Excel with cache", e);
+            return false;
+        }
+    }
+
+    /**
+     * Parse JSON values object into baseValues map
+     */
+    private int parseJSONValues(JsonObject values) {
+        int loadedCount = 0;
+        
+        for (Map.Entry<String, JsonElement> entry : values.entrySet()) {
+            String itemId = entry.getKey();
+            
+            // Skip comments
+            if (itemId.startsWith("_")) continue;
+
+            if (!entry.getValue().isJsonPrimitive() ||
+                    !entry.getValue().getAsJsonPrimitive().isNumber()) {
+                LOGGER.warn("Invalid EMC value for {}", itemId);
+                continue;
+            }
+
+            long emcValue = entry.getValue().getAsLong();
+
+            if (emcValue < 0) {
+                LOGGER.warn("Negative EMC value for {}", itemId);
+                continue;
+            }
+
+            try {
+                ResourceLocation itemLocation = ResourceLocation.parse(itemId);
+                baseValues.put(itemLocation, emcValue);
+                loadedCount++;
+            } catch (Exception e) {
+                LOGGER.warn("Invalid item ID: {}", itemId);
+            }
+        }
+        
+        return loadedCount;
+    }
+
+    /**
      * Ensure the custom values file exists
-     * Creates an empty one if it doesn't exist
      */
     private void ensureCustomFileExists() {
         Path customFile = configDir.resolve(CUSTOM_VALUES_FILE);
         if (!customFile.toFile().exists()) {
             try (Writer writer = Files.newBufferedWriter(customFile)) {
-                // Create empty JSON object with a helpful comment
                 writer.write("{\n");
                 writer.write("  \"_comment\": \"Add your custom EMC values here. They will override mod defaults.\",\n");
                 writer.write("  \"_example\": \"minecraft:diamond\": 10000\n");
@@ -85,90 +414,6 @@ public class EMCConfig {
     }
 
     /**
-     * Load base EMC values from mod resources and custom config
-     * Loads in order: mod defaults first, then custom overrides
-     *
-     * @return true if successful
-     */
-    public boolean loadBaseValues() {
-        baseValues.clear();
-        
-        // Step 1: Load from mod resources (packaged defaults)
-        if (!loadModBaseValues()) {
-            LOGGER.error("Failed to load mod base values!");
-            return false;
-        }
-        
-        // Step 2: Load custom values (user overrides)
-        ensureCustomFileExists();
-        loadCustomValues();
-        
-        LOGGER.info("Loaded total of {} EMC base values (mod + custom)", baseValues.size());
-        return true;
-    }
-    
-    /**
-     * Load base values from the mod's packaged resources
-     * This always loads the "official" values shipped with the mod
-     */
-    private boolean loadModBaseValues() {
-
-        try (InputStream in = getClass().getResourceAsStream(BASE_VALUES_FILE)) {
-            if (in == null) {
-                LOGGER.error("Could not find mod base values resource: {}", BASE_VALUES_FILE);
-                return false;
-            }
-            
-            Reader reader = new InputStreamReader(in);
-            JsonObject json = GSON.fromJson(reader, JsonObject.class);
-
-            if (json == null) {
-                LOGGER.error("Mod base values resource is empty or invalid JSON");
-                return false;
-            }
-
-            int loadedCount = 0;
-            for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
-                String itemId = entry.getKey();
-                
-                // Skip comments
-                if (itemId.startsWith("_")) continue;
-
-                if (!entry.getValue().isJsonPrimitive() ||
-                        !entry.getValue().getAsJsonPrimitive().isNumber()) {
-                    LOGGER.warn("Invalid EMC value in mod resources for {}: {}", itemId, entry.getValue());
-                    continue;
-                }
-
-                long emcValue = entry.getValue().getAsLong();
-
-                if (emcValue < 0) {
-                    LOGGER.warn("Negative EMC value in mod resources for {}: {}", itemId, emcValue);
-                    continue;
-                }
-
-                try {
-                    ResourceLocation itemLocation = ResourceLocation.parse(itemId);
-                    baseValues.put(itemLocation, emcValue);
-                    loadedCount++;
-                } catch (Exception e) {
-                    LOGGER.warn("Invalid item ID in mod resources: {}", itemId);
-                }
-            }
-
-            LOGGER.info("Loaded {} base EMC values from mod resources", loadedCount);
-            return true;
-
-        } catch (IOException e) {
-            LOGGER.error("Failed to load mod base values", e);
-            return false;
-        } catch (JsonSyntaxException e) {
-            LOGGER.error("Invalid JSON in mod base values", e);
-            return false;
-        }
-    }
-    
-    /**
      * Load custom EMC values from user's config file
      * These override the mod's base values
      */
@@ -176,7 +421,6 @@ public class EMCConfig {
         Path customFile = configDir.resolve(CUSTOM_VALUES_FILE);
         
         if (!Files.exists(customFile)) {
-            LOGGER.info("No custom values file found");
             return;
         }
         
@@ -184,7 +428,6 @@ public class EMCConfig {
             JsonObject json = GSON.fromJson(reader, JsonObject.class);
 
             if (json == null) {
-                LOGGER.warn("Custom values file is empty or invalid JSON");
                 return;
             }
 
@@ -194,33 +437,22 @@ public class EMCConfig {
             for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
                 String itemId = entry.getKey();
                 
-                // Skip comments
                 if (itemId.startsWith("_")) continue;
 
                 if (!entry.getValue().isJsonPrimitive() ||
                         !entry.getValue().getAsJsonPrimitive().isNumber()) {
-                    LOGGER.warn("Invalid EMC value in custom config for {}: {}", itemId, entry.getValue());
                     continue;
                 }
 
                 long emcValue = entry.getValue().getAsLong();
 
-                if (emcValue < 0) {
-                    LOGGER.warn("Negative EMC value in custom config for {}: {}", itemId, emcValue);
-                    continue;
-                }
-
                 try {
                     ResourceLocation itemLocation = ResourceLocation.parse(itemId);
                     
-                    // Check if this is an override or new value
                     if (baseValues.containsKey(itemLocation)) {
                         overrideCount++;
-                        LOGGER.debug("Custom override: {} = {} (was {})", 
-                            itemId, emcValue, baseValues.get(itemLocation));
                     } else {
                         newCount++;
-                        LOGGER.debug("Custom new value: {} = {}", itemId, emcValue);
                     }
                     
                     baseValues.put(itemLocation, emcValue);
@@ -230,32 +462,21 @@ public class EMCConfig {
             }
 
             if (overrideCount > 0 || newCount > 0) {
-                LOGGER.info("Loaded custom values: {} overrides, {} new values", 
-                    overrideCount, newCount);
-            } else {
-                LOGGER.info("No custom values defined");
+                LOGGER.info("Custom values: {} overrides, {} new", overrideCount, newCount);
             }
 
-        } catch (IOException e) {
+        } catch (Exception e) {
             LOGGER.warn("Failed to load custom values: {}", e.getMessage());
-        } catch (JsonSyntaxException e) {
-            LOGGER.warn("Invalid JSON in custom values file: {}", e.getMessage());
         }
     }
 
     /**
      * Save a custom EMC value
-     * This adds/updates a value in the custom values file
-     *
-     * @param item The item
-     * @param value The EMC value
-     * @return true if successful
      */
     public boolean saveCustomValue(Item item, long value) {
         Path customFile = configDir.resolve(CUSTOM_VALUES_FILE);
         
         try {
-            // Load existing custom values
             Map<String, Long> customValues = new HashMap<>();
             
             if (Files.exists(customFile)) {
@@ -263,7 +484,7 @@ public class EMCConfig {
                     JsonObject json = GSON.fromJson(reader, JsonObject.class);
                     if (json != null) {
                         for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
-                            if (entry.getKey().startsWith("_")) continue; // Skip comments
+                            if (entry.getKey().startsWith("_")) continue;
                             if (entry.getValue().isJsonPrimitive() && entry.getValue().getAsJsonPrimitive().isNumber()) {
                                 customValues.put(entry.getKey(), entry.getValue().getAsLong());
                             }
@@ -272,16 +493,13 @@ public class EMCConfig {
                 }
             }
             
-            // Add/update the new value
             ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
             customValues.put(itemId.toString(), value);
             
-            // Write back to file
             try (Writer writer = Files.newBufferedWriter(customFile)) {
                 JsonObject json = new JsonObject();
                 json.addProperty("_comment", "Add your custom EMC values here. They will override mod defaults.");
                 
-                // Sort for readability
                 List<String> sortedKeys = new ArrayList<>(customValues.keySet());
                 sortedKeys.sort(String::compareTo);
                 
@@ -303,15 +521,11 @@ public class EMCConfig {
 
     /**
      * Load computed EMC values from JSON
-     * These are the calculated values from the last calculator run
-     *
-     * @return true if successful
      */
     public boolean loadComputedValues() {
         Path filePath = configDir.resolve(COMPUTED_VALUES_FILE);
 
         if (!Files.exists(filePath)) {
-            LOGGER.info("Computed values file not found, will generate on next calculation");
             return false;
         }
 
@@ -319,7 +533,6 @@ public class EMCConfig {
             JsonObject json = GSON.fromJson(reader, JsonObject.class);
 
             if (json == null) {
-                LOGGER.error("Computed values file is empty or invalid JSON");
                 return false;
             }
 
@@ -339,15 +552,14 @@ public class EMCConfig {
                     ResourceLocation itemLocation = ResourceLocation.parse(itemId);
                     computedValues.put(itemLocation, emcValue);
                 } catch (Exception e) {
-                    LOGGER.warn("Invalid item ID in computed values: {}", itemId);
+                    LOGGER.warn("Invalid item ID: {}", itemId);
                 }
             }
 
-            LOGGER.info("Loaded {} computed EMC values from {}",
-                    computedValues.size(), COMPUTED_VALUES_FILE);
+            LOGGER.info("Loaded {} computed values", computedValues.size());
             return true;
 
-        } catch (IOException | JsonSyntaxException e) {
+        } catch (Exception e) {
             LOGGER.error("Failed to load computed values", e);
             return false;
         }
@@ -355,9 +567,6 @@ public class EMCConfig {
 
     /**
      * Save computed EMC values to JSON
-     * This is called after the calculator runs
-     *
-     * @return true if successful
      */
     public boolean saveComputedValues() {
         Path filePath = configDir.resolve(COMPUTED_VALUES_FILE);
@@ -365,7 +574,6 @@ public class EMCConfig {
         try (Writer writer = Files.newBufferedWriter(filePath)) {
             JsonObject json = new JsonObject();
 
-            // Sort for readability
             List<ResourceLocation> sortedKeys = new ArrayList<>(computedValues.keySet());
             sortedKeys.sort(Comparator.comparing(ResourceLocation::toString));
 
@@ -374,9 +582,7 @@ public class EMCConfig {
             }
 
             GSON.toJson(json, writer);
-
-            LOGGER.info("Saved {} computed EMC values to {}",
-                    computedValues.size(), COMPUTED_VALUES_FILE);
+            LOGGER.info("Saved {} computed values", computedValues.size());
             return true;
 
         } catch (IOException e) {
@@ -385,58 +591,27 @@ public class EMCConfig {
         }
     }
 
-    /**
-     * Create default base values
-     * This is your starting point - the "anchor" values
-     *
-     * Philosophy:
-     * - Start with basic raw materials
-     * - The calculator will figure out everything else from recipes
-     */
-    private void createDefaultBaseValues() {
-        // Basic building blocks
-        //baseValues.put(ResourceLocation.parse("minecraft:cobblestone"), 1L);
+    // ============= Getters/Setters =============
 
-        // Custom mod items (examples)
-        // baseValues.put(ResourceLocation.fromNamespaceAndPath(NeoExchange.MOD_ID, "neo_stone"), 512L);
-
-        LOGGER.info("Created {} default base values", baseValues.size());
-    }
-
-    /**
-     * Get a base EMC value by item
-     */
     public Optional<Long> getBaseValue(Item item) {
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
         return Optional.ofNullable(baseValues.get(id));
     }
 
-    /**
-     * Get a computed EMC value by item
-     */
     public Optional<Long> getComputedValue(Item item) {
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
         return Optional.ofNullable(computedValues.get(id));
     }
 
-    /**
-     * Set a base value (useful for runtime modifications)
-     */
     public void setBaseValue(Item item, long value) {
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
         baseValues.put(id, value);
     }
 
-    /**
-     * Get all base values
-     */
     public Map<ResourceLocation, Long> getBaseValues() {
         return Collections.unmodifiableMap(baseValues);
     }
 
-    /**
-     * Get all computed values
-     */
     public Map<ResourceLocation, Long> getComputedValues() {
         return Collections.unmodifiableMap(computedValues);
     }
@@ -445,9 +620,6 @@ public class EMCConfig {
         return Collections.unmodifiableList(restValues);
     }
 
-    /**
-     * Set all computed values (called by the calculator)
-     */
     public void setComputedValues(Map<ResourceLocation, Long> values) {
         computedValues.clear();
         computedValues.putAll(values);
