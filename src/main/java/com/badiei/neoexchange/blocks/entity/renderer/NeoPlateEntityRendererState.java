@@ -9,6 +9,7 @@ public class NeoPlateEntityRendererState extends BlockEntityRenderState {
     public BlockPos lightPosition;
     public Level blockEntityLevel;
     public float rotation;
+    public float yLocation;
 
     final ItemStackRenderState itemStackRenderState = new ItemStackRenderState();
 }

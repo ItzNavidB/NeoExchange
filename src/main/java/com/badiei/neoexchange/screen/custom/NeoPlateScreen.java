@@ -158,7 +158,10 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         }
         if (mouseEvent.button() == 0 && searchBox != null && !searchBox.isMouseOver(mouseEvent.x(), mouseEvent.y())) {
             searchBox.setFocused(false);  // Keep it focused for convenience
-            return true;  // We handled this click
+            //return true;  // We handled this click
+        }
+        if (mouseEvent.button() == 0 && searchBox != null && searchBox.isMouseOver(mouseEvent.x(), mouseEvent.y())) {
+            searchBox.setFocused(true);  // Keep it focused for convenience
         }
         
         // Otherwise, let parent handle it (for clicking slots, etc.)
@@ -177,6 +180,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
         renderEMCInfo(guiGraphics, mouseX, mouseY, partialTick);
+
 
         super.renderTooltip(guiGraphics, mouseX, mouseY);
     }

@@ -27,10 +27,10 @@ public enum NeoStoneType {
 
     // Each line here creates ONE constant of this enum type
     // The numbers in parentheses are passed to the constructor below
-    COMMON(1, "Common Stone", 2304, ChatFormatting.GRAY),
-    UNCOMMON(2, "Uncommon Stone", 18432, ChatFormatting.GREEN),
-    RARE(3, "Rare Stone", 73728, ChatFormatting.AQUA),
-    EPIC(4, "Epic Stone", 147456, ChatFormatting.LIGHT_PURPLE),
+    COMMON(1, "Common Stone", 256, ChatFormatting.GRAY),
+    UNCOMMON(2, "Uncommon Stone", 1024, ChatFormatting.GREEN),
+    RARE(3, "Rare Stone", 8192, ChatFormatting.AQUA),
+    EPIC(4, "Epic Stone", 16384, ChatFormatting.LIGHT_PURPLE),
     LEGENDARY(5, "Legendary Stone", 451332, ChatFormatting.GOLD),  // No limit!
     MYTHIC(6, "Mythic Stone", Integer.MAX_VALUE, ChatFormatting.DARK_RED);  // Even further to no limit!
 
@@ -62,7 +62,11 @@ public enum NeoStoneType {
         this.color = color;
 
     }
-    
+
+    public int getDefaultMaxEMC() {
+        return 64;
+    }
+
     /**
      * Get the tier number of this stone type
      * @return 1-6 depending on which tier this is
@@ -176,4 +180,6 @@ public enum NeoStoneType {
     }
 
     public ChatFormatting getColor() {return this.color;}
+
+
 }

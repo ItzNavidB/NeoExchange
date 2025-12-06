@@ -1,5 +1,6 @@
 package com.badiei.neoexchange.emc;
 
+import com.badiei.neoexchange.economy.NeoStoneType;
 import com.badiei.neoexchange.items.NeoStoneItem;
 import com.badiei.neoexchange.network.SyncEMCPacket;
 import com.badiei.neoexchange.network.SyncLearnedItemsPacket;
@@ -340,7 +341,7 @@ public class EMCHelper {
     }
 
     public static int getStoneMaxEMC(ItemStack stone) {
-        int maxEMC = 256;
+        int maxEMC = NeoStoneType.COMMON.getDefaultMaxEMC();
         if (stone != ItemStack.EMPTY) {
             maxEMC = ((NeoStoneItem) stone.getItem()).getStoneType().getMaxEMC();
         }
@@ -348,11 +349,10 @@ public class EMCHelper {
     }
 
     public static String getStoneMaxEMCFormatted(ItemStack stone) {
-        int maxEMC = 256;
+        int maxEMC = getStoneMaxEMC(stone);
         if (stone != ItemStack.EMPTY) {
             maxEMC = ((NeoStoneItem) stone.getItem()).getStoneType().getMaxEMC();
         }
-        String display =  maxEMC == Integer.MAX_VALUE ? "∞" : String.valueOf(maxEMC);
-        return display;
+        return maxEMC == Integer.MAX_VALUE ? "∞" : String.valueOf(maxEMC);
     }
 }

@@ -1,5 +1,6 @@
 package com.badiei.neoexchange.blocks.custom;
 
+import com.badiei.neoexchange.blocks.entity.NeoBlockEntities;
 import com.badiei.neoexchange.blocks.entity.NeoPlateEntity;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
@@ -15,6 +16,8 @@ import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -95,6 +98,15 @@ public class NeoPlateTemplate extends BaseEntityBlock {
      * Drop items when the block is broken
      */
 
+    @Override
+    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> blockEntityType) {
+        // Only tick on the client side (animations are visual only)
+        if (level.isClientSide()) {
+            // Check that we're getting the right block entity type
+            return createTickerHelper(blockEntityType, NeoBlockEntities.NEO_PLATE_BE.get(), NeoPlateEntity::tick);
+        }
+        return null; // No server-side ticking needed for animations
+    }
 
     /**
      * Render as a normal block (not invisible like some block entities)
