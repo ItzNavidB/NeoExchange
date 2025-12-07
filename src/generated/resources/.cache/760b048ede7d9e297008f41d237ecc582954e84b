@@ -1,0 +1,17 @@
+// 1.21.10	2025-12-06T00:35:58.7628302	Model Definitions - neoexchange
+aa3e949603f3902af61c1c814aed5367092c8248 assets/neoexchange/blockstates/neo_plate.json
+5a21a89c4f63c32e1eea85f8ab77d0eb44869ff6 assets/neoexchange/items/common_stone.json
+53aa138fa3696ec0db03c5105979e60675a989e6 assets/neoexchange/items/epic_stone.json
+072c120ebf20a69564e4e6960a9b3ab7c2b25cfa assets/neoexchange/items/legendary_stone.json
+7e58144f9e933a2f1cbd71179a1df34a3c20423d assets/neoexchange/items/mythic_stone.json
+be36d9bb47da657a073064ad373b231d7f2d18d9 assets/neoexchange/items/neo_plate.json
+71f35e22d5684181d4861885bfdb1746cb5e65ad assets/neoexchange/items/neo_stone.json
+c469589c217c148f16f62f1d21b1f4a558bcc65d assets/neoexchange/items/rare_stone.json
+0c0ed96660882c867099cdfabd634ade0b8f7f40 assets/neoexchange/items/uncommon_stone.json
+5a6cafaf3379150869cee97c8d8318da4475a3a8 assets/neoexchange/models/item/common_stone.json
+545d3015dd8c126fbcfc1e896eb92fe5d976f65f assets/neoexchange/models/item/epic_stone.json
+084db03027d9ccbcbee26e8e11d837f63bf36677 assets/neoexchange/models/item/legendary_stone.json
+2c56989202556a28f80ec82d0dc56ef412249fbe assets/neoexchange/models/item/mythic_stone.json
+55f20aa54985cbce6fe630719a25311defafaa05 assets/neoexchange/models/item/neo_stone.json
+4443572a110a458f34a107d7ef77f46a60debd4f assets/neoexchange/models/item/rare_stone.json
+aba042aa4498bfad54ff025b7dc1ed24ee2bb4f5 assets/neoexchange/models/item/uncommon_stone.json
