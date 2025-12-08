@@ -21,7 +21,7 @@ repositories {
 }
 
 base {
-    archivesName = mod_id
+    archivesName = "Neo Exchange-${minecraft_version}-NE"
 }
 
 // Mojang ships Java 21 to end users in 1.21.10, so mods should target Java 21.
@@ -117,6 +117,8 @@ dependencies {
     // For more info:
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
+    implementation 'org.apache.poi:poi:5.2.5'           // Core library
+    implementation 'org.apache.poi:poi-ooxml:5.2.5'
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

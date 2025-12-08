@@ -1,7 +1,15 @@
 {
   "item.neoexchange.neo_stone": "Neo Stone",
 
+  "item.neoexchange.common_stone": "Common Stone",
+  "item.neoexchange.uncommon_stone": "Uncommon Stone",
+  "item.neoexchange.rare_stone": "Rare Stone",
+  "item.neoexchange.epic_stone": "Epic Stone",
+  "item.neoexchange.legendary_stone": "Legendary Stone",
+  "item.neoexchange.mythic_stone": "Mythic Stone",
+
   "block.neoexchange.neo_plate": "Neo Plate",
 
-  "creativetab.neoexchange.neo_tab": "Neo Tab"
+  "creativetab.neoexchange.neo_tab": "Neo Exchange",
+  "creativetab.neoexchange.neo_tab2": "Neo UnExchange"
 }

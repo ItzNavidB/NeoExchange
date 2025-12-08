@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": "minecraft:netherite_block",
+    "D": "minecraft:dragon_egg",
+    "N": "neoexchange:epic_stone",
+    "S": "minecraft:nether_star"
+  },
+  "pattern": [
+    " D ",
+    "BNB",
+    " S "
+  ],
+  "result": {
+    "count": 1,
+    "id": "neoexchange:legendary_stone"
+  }
+}

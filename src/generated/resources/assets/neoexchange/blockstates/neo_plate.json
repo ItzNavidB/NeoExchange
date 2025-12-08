@@ -1,0 +1,30 @@
+{
+  "variants": {
+    "facing=down": {
+      "model": "neoexchange:block/neo_plate",
+      "x": 180
+    },
+    "facing=east": {
+      "model": "neoexchange:block/neo_plate",
+      "x": 90,
+      "y": 90
+    },
+    "facing=north": {
+      "model": "neoexchange:block/neo_plate",
+      "x": 90
+    },
+    "facing=south": {
+      "model": "neoexchange:block/neo_plate",
+      "x": 90,
+      "y": 180
+    },
+    "facing=up": {
+      "model": "neoexchange:block/neo_plate"
+    },
+    "facing=west": {
+      "model": "neoexchange:block/neo_plate",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

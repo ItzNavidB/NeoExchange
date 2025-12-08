@@ -1,0 +1,10 @@
+{
+  "values": [
+    "neoexchange:common_stone",
+    "neoexchange:uncommon_stone",
+    "neoexchange:rare_stone",
+    "neoexchange:epic_stone",
+    "neoexchange:legendary_stone",
+    "neoexchange:mythic_stone"
+  ]
+}

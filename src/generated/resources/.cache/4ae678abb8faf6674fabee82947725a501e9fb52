@@ -1,0 +1,15 @@
+// 1.21.10	2025-12-06T00:35:58.7628302	NeoExchange Recipes
+3c164ce6322326bd9557e4c6e09b548cb70d02dc data/neoexchange/advancement/recipes/misc/common_stone.json
+4d4ea0aaffee09bb64f1b8ab3f6f22e84fe8ac5a data/neoexchange/advancement/recipes/misc/epic_stone.json
+ddeb99ddbcca76d95ed579ec41dc611b627cf0d7 data/neoexchange/advancement/recipes/misc/legendary_stone.json
+04eefb594e42a2828b152227f10f947ad34e56ff data/neoexchange/advancement/recipes/misc/neo_plate.json
+712ee6522926ceabaea12c163fd7548292c28ed9 data/neoexchange/advancement/recipes/misc/neo_stone.json
+d1309a911bf903cdbf9a78aee6e55b0302086fbe data/neoexchange/advancement/recipes/misc/rare_stone.json
+52748552f49783b884627dbd556246804c133d61 data/neoexchange/advancement/recipes/misc/uncommon_stone.json
+34ba7a9453db50391bca4af85494cf90c9b3a772 data/neoexchange/recipe/common_stone.json
+365a2bb6409b454f99522408d84d778023078659 data/neoexchange/recipe/epic_stone.json
+fc793a369a09a6a729c07336d433a31a7a24ee45 data/neoexchange/recipe/legendary_stone.json
+87385ffd420742ae553da1b5d65b3c3f880d6dd8 data/neoexchange/recipe/neo_plate.json
+e95b11679f6574a86b2c9f721e3502dc01ce8a2e data/neoexchange/recipe/neo_stone.json
+631fa996512241a33bd037bfcbcf9ac7ee025b75 data/neoexchange/recipe/rare_stone.json
+52c3a2a558efb96c294adde21c79e9c76b5943e8 data/neoexchange/recipe/uncommon_stone.json

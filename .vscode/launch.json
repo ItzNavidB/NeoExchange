@@ -1,0 +1,235 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "NeoExchange - Client",
+      "presentation": {
+        "group": "NG - NeoExchange",
+        "order": 0
+      },
+      "projectName": "NeoExchange",
+      "mainClass": "net.neoforged.fml.startup.Client",
+      "args": [
+        "--version",
+        "21.10.50-beta",
+        "--assetIndex",
+        "asset-index",
+        "--assetsDir",
+        "C:\\Users\\navid\\.gradle\\caches\\minecraft\\assets",
+        "--fml.mcVersion",
+        "1.21.10",
+        "--fml.neoForgeVersion",
+        "21.10.50-beta",
+        "--fml.neoFormVersion",
+        "20251010.172816"
+      ],
+      "vmArgs": [
+        "--add-opens",
+        "java.base/java.lang.invoke\u003dALL-UNNAMED",
+        "--add-exports",
+        "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
+        "-XX:HeapDumpPath\u003dMojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump",
+        "-Dforge.logging.markers\u003dREGISTRIES",
+        "-Dforge.logging.console.level\u003ddebug",
+        "-Dneoforge.enabledGameTestNamespaces\u003dneoexchange",
+        "-Dneoforge.enableGameTest\u003dtrue",
+        "-Djava.net.preferIPv6Addresses\u003dsystem"
+      ],
+      "cwd": "${workspaceFolder}\\runs\\client",
+      "env": {
+        "MOD_CLASSES": "NeoExchange%%C:\\Users\\navid\\Desktop\\NeoExchange\\bin\\main"
+      },
+      "shortenCommandLine": "argfile"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "NeoExchange - ClientData",
+      "presentation": {
+        "group": "NG - NeoExchange",
+        "order": 1
+      },
+      "projectName": "NeoExchange",
+      "mainClass": "net.neoforged.fml.startup.DataClient",
+      "args": [
+        "--mod",
+        "neoexchange",
+        "--all",
+        "--output",
+        "C:\\Users\\navid\\Desktop\\NeoExchange\\src\\generated\\resources",
+        "--existing",
+        "C:\\Users\\navid\\Desktop\\NeoExchange\\src\\main\\resources",
+        "--assetIndex",
+        "asset-index",
+        "--assetsDir",
+        "C:\\Users\\navid\\.gradle\\caches\\minecraft\\assets",
+        "--fml.mcVersion",
+        "1.21.10",
+        "--fml.neoForgeVersion",
+        "21.10.50-beta",
+        "--fml.neoFormVersion",
+        "20251010.172816"
+      ],
+      "vmArgs": [
+        "--add-opens",
+        "java.base/java.lang.invoke\u003dALL-UNNAMED",
+        "--add-exports",
+        "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
+        "-XX:HeapDumpPath\u003dMojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump",
+        "-Dforge.logging.markers\u003dREGISTRIES",
+        "-Dforge.logging.console.level\u003ddebug",
+        "-Djava.net.preferIPv6Addresses\u003dsystem"
+      ],
+      "cwd": "${workspaceFolder}\\runs\\clientData",
+      "env": {
+        "MOD_CLASSES": "NeoExchange%%C:\\Users\\navid\\Desktop\\NeoExchange\\bin\\main"
+      },
+      "shortenCommandLine": "argfile"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "NeoExchange - GameTestServer",
+      "presentation": {
+        "group": "NG - NeoExchange",
+        "order": 2
+      },
+      "projectName": "NeoExchange",
+      "mainClass": "net.neoforged.fml.startup.GameTestServer",
+      "args": [
+        "--fml.mcVersion",
+        "1.21.10",
+        "--fml.neoForgeVersion",
+        "21.10.50-beta",
+        "--fml.neoFormVersion",
+        "20251010.172816"
+      ],
+      "vmArgs": [
+        "--add-opens",
+        "java.base/java.lang.invoke\u003dALL-UNNAMED",
+        "--add-exports",
+        "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
+        "-Dforge.logging.markers\u003dREGISTRIES",
+        "-Dforge.logging.console.level\u003ddebug",
+        "-Dneoforge.enabledGameTestNamespaces\u003dneoexchange",
+        "-Dneoforge.enableGameTest\u003dtrue",
+        "-Djava.net.preferIPv6Addresses\u003dsystem"
+      ],
+      "cwd": "${workspaceFolder}\\runs\\gameTestServer",
+      "env": {
+        "MOD_CLASSES": "NeoExchange%%C:\\Users\\navid\\Desktop\\NeoExchange\\bin\\main"
+      },
+      "shortenCommandLine": "argfile"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "NeoExchange - Junit",
+      "presentation": {
+        "group": "NG - NeoExchange",
+        "order": 3
+      },
+      "projectName": "NeoExchange",
+      "mainClass": "NONE",
+      "args": [
+        "--version",
+        "21.10.50-beta",
+        "--assetIndex",
+        "asset-index",
+        "--assetsDir",
+        "C:\\Users\\navid\\.gradle\\caches\\minecraft\\assets",
+        "--fml.mcVersion",
+        "1.21.10",
+        "--fml.neoForgeVersion",
+        "21.10.50-beta",
+        "--fml.neoFormVersion",
+        "20251010.172816"
+      ],
+      "vmArgs": [
+        "--add-opens",
+        "java.base/java.lang.invoke\u003dALL-UNNAMED",
+        "--add-exports",
+        "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
+        "-XX:HeapDumpPath\u003dMojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump",
+        "-Dforge.logging.markers\u003dREGISTRIES",
+        "-Dforge.logging.console.level\u003ddebug",
+        "-Djava.net.preferIPv6Addresses\u003dsystem"
+      ],
+      "cwd": "${workspaceFolder}\\runs\\junit",
+      "env": {
+        "MOD_CLASSES": "NeoExchange%%C:\\Users\\navid\\Desktop\\NeoExchange\\bin\\main"
+      },
+      "shortenCommandLine": "argfile"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "NeoExchange - Server",
+      "presentation": {
+        "group": "NG - NeoExchange",
+        "order": 4
+      },
+      "projectName": "NeoExchange",
+      "mainClass": "net.neoforged.fml.startup.Server",
+      "args": [
+        "--nogui",
+        "--fml.mcVersion",
+        "1.21.10",
+        "--fml.neoForgeVersion",
+        "21.10.50-beta",
+        "--fml.neoFormVersion",
+        "20251010.172816"
+      ],
+      "vmArgs": [
+        "--add-opens",
+        "java.base/java.lang.invoke\u003dALL-UNNAMED",
+        "--add-exports",
+        "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
+        "-Dforge.logging.markers\u003dREGISTRIES",
+        "-Dforge.logging.console.level\u003ddebug",
+        "-Dneoforge.enabledGameTestNamespaces\u003dneoexchange",
+        "-Djava.net.preferIPv6Addresses\u003dsystem"
+      ],
+      "cwd": "${workspaceFolder}\\runs\\server",
+      "env": {
+        "MOD_CLASSES": "NeoExchange%%C:\\Users\\navid\\Desktop\\NeoExchange\\bin\\main"
+      },
+      "shortenCommandLine": "argfile"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "NeoExchange - ServerData",
+      "presentation": {
+        "group": "NG - NeoExchange",
+        "order": 5
+      },
+      "projectName": "NeoExchange",
+      "mainClass": "net.neoforged.fml.startup.DataServer",
+      "args": [
+        "--fml.mcVersion",
+        "1.21.10",
+        "--fml.neoForgeVersion",
+        "21.10.50-beta",
+        "--fml.neoFormVersion",
+        "20251010.172816"
+      ],
+      "vmArgs": [
+        "--add-opens",
+        "java.base/java.lang.invoke\u003dALL-UNNAMED",
+        "--add-exports",
+        "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
+        "-Dforge.logging.markers\u003dREGISTRIES",
+        "-Dforge.logging.console.level\u003ddebug",
+        "-Djava.net.preferIPv6Addresses\u003dsystem"
+      ],
+      "cwd": "${workspaceFolder}\\runs\\serverData",
+      "env": {
+        "MOD_CLASSES": "NeoExchange%%C:\\Users\\navid\\Desktop\\NeoExchange\\bin\\main"
+      },
+      "shortenCommandLine": "argfile"
+    }
+  ]
+}
