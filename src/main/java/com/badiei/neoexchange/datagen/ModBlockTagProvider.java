@@ -25,7 +25,7 @@ public class ModBlockTagProvider extends BlockTagsProvider {
                 .add(NeoBlocks.NEO_PLATE.get());
 
         // Neo Plate requires iron tool or better
-        tag(BlockTags.NEEDS_IRON_TOOL)
-                .add(NeoBlocks.NEO_PLATE.get());
+        //tag(BlockTags.NEEDS_IRON_TOOL)
+        //        .add(NeoBlocks.NEO_PLATE.get());
     }
 }

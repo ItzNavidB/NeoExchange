@@ -1,7 +1,6 @@
 package com.badiei.neoexchange.emc;
 
 import com.badiei.neoexchange.screen.custom.NeoPlateScreen;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
@@ -213,7 +212,9 @@ public class PlayerEMCData {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
         if (learnedItems.contains(itemId)) {return;}
         learnedItems.add(itemId);
-        EMCHelper.syncLearnedItems(Minecraft.getInstance().player);
+        // NOTE: Syncing is handled by the caller (EMCHelper methods)
+        // We don't sync here because this method is called during deserialization
+        // when no player/client is available
     }
 
     public void unLearnItem(Item item) {

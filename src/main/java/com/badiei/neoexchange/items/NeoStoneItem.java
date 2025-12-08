@@ -13,6 +13,8 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.TooltipDisplay;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.loading.FMLEnvironment;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Consumer;
@@ -22,9 +24,9 @@ import java.util.function.Consumer;
  * Each stone has a colored name and special properties based on its tier.
  */
 public class NeoStoneItem extends Item {
-    
+
     private final NeoStoneType stoneType;
-    
+
     /**
      * Constructor for Neo Stone items
      * @param properties The properties passed by the registration system (MUST USE THESE!)
@@ -37,10 +39,10 @@ public class NeoStoneItem extends Item {
                 .stacksTo(1)  // Neo Stones don't stack (they're special/powerful)
                 .durability(stoneType.getMaxEMC()*10)
         );
-        
+
         this.stoneType = stoneType;
     }
-    
+
     /**
      * Get the tier type of this stone
      * @return The NeoStoneType enum value
@@ -48,11 +50,11 @@ public class NeoStoneItem extends Item {
     public NeoStoneType getStoneType() {
         return this.stoneType;
     }
-    
+
     /**
      * Override the display name to add custom coloring
      * This makes the item name colored regardless of language!
-     * 
+     *
      * @param stack The item stack
      * @return Component with colored name
      */
@@ -60,7 +62,7 @@ public class NeoStoneItem extends Item {
     public Component getName(ItemStack stack) {
         // Get the base name from the language file
         Component baseName = super.getName(stack);
-        
+
         // Return it with our custom color applied
         // withStyle() adds formatting (color, bold, italic, etc.)
         return baseName.copy().withStyle(this.stoneType.getColor());
@@ -80,11 +82,28 @@ public class NeoStoneItem extends Item {
 
     @Override
     public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context, @NotNull TooltipDisplay tooltipDisplay, @NotNull Consumer<Component> tooltipAdder, @NotNull TooltipFlag flag) {
-        if (Minecraft.getInstance().hasShiftDown()) {
+        // Check if we're on the client side before accessing client-only code
+        // FMLEnvironment.dist is safe to check - it doesn't load client classes
+        if (FMLEnvironment.getDist().isClient()) {
+            // Only execute client-only code when we're actually on the client
+            addClientTooltip(tooltipAdder);
+        }
+    }
+
+    /**
+     * Client-only tooltip logic
+     * This method will only be called on the client side, so it's safe to use client-only classes here
+     */
+    private void addClientTooltip(Consumer<Component> tooltipAdder) {
+        // Now we can safely check for SHIFT using client-only code
+        // Import Screen class locally in this method to avoid class loading issues
+        boolean shiftDown = Minecraft.getInstance().hasShiftDown();
+
+        if (shiftDown) {
             // Add tier information
             tooltipAdder.accept(Component.literal("Tier " + stoneType.getTier())
                     .withStyle(ChatFormatting.GRAY));
-            
+
             // Add what this stone unlocks (specific to each tier)
             String formattedString = String.format("%,d", stoneType.getMaxEMC());
             if (stoneType == NeoStoneType.COMMON) {
@@ -123,7 +142,7 @@ public class NeoStoneItem extends Item {
                             .withStyle(ChatFormatting.GRAY)));
         }
     }
-    
+
     /**
      * Make the item glow with enchantment effect for higher tiers
      * @param stack The item stack
