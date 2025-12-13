@@ -45,8 +45,12 @@ public class EMCEventHandler {
             // Get the new player data
             PlayerEMCData newData = EMCHelper.getPlayerEMC(event.getEntity());
 
-            // Copy the EMC balance from old to new
+            // Copy ALL data (EMC balance AND learned items) from old to new
             newData.copyFrom(oldData);
+
+            // IMPORTANT: Sync to client after cloning!
+            // This ensures the client knows about the copied data
+            EMCHelper.syncToClient((ServerPlayer) event.getEntity());
 
             // Optional: Implement death penalty
             if (event.isWasDeath()) {
@@ -55,13 +59,15 @@ public class EMCEventHandler {
                 // long penaltyEMC = (long)(currentEMC * 0.10);
                 // newData.removeEMC(penaltyEMC);
 
-                LOGGER.debug("Player {} died. EMC preserved: {}",
+                LOGGER.debug("Player {} died. EMC preserved: {}, {} learned items",
                         event.getEntity().getName().getString(),
-                        newData.getEMC());
+                        newData.getEMC(),
+                        newData.getLearnedItems().size());
             } else {
-                LOGGER.debug("Player {} changed dimension. EMC preserved: {}",
+                LOGGER.debug("Player {} changed dimension. EMC preserved: {}, {} learned items",
                         event.getEntity().getName().getString(),
-                        newData.getEMC());
+                        newData.getEMC(),
+                        newData.getLearnedItems().size());
             }
         }
     }
@@ -86,7 +92,7 @@ public class EMCEventHandler {
 
             // IMPORTANT: Sync ALL (EMC and learnedItems) to client on login!
             // Without this, the client won't know the player's data
-            EMCHelper.syncALL(player);
+            EMCHelper.syncToClient(player);
         }
     }
 

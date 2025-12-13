@@ -33,43 +33,24 @@ public class NetworkHandler {
         // increment this to prevent mismatched clients/servers from connecting
         PayloadRegistrar registrar = event.registrar("1.0.0");
 
+        // ===== SERVER → CLIENT PACKETS =====
+        
         /**
-         * Register the SyncEMCPacket
-         * 
-         * Breaking down this chain of method calls:
-         * 
-         * 1. playToClient() - This packet travels FROM server TO client
-         *    (There's also clientToServer for packets going the other way)
-         * 
-         * 2. SyncEMCPacket.PACKET_ID - The unique identifier for this packet
-         * 
-         * 3. SyncEMCPacket.STREAM_CODEC - How to encode/decode the packet
-         * 
-         * 4. SyncEMCPacket::handleClient - The method to call when received
-         * 
-         * Think of this like setting up a mail route:
-         * - "This mail goes from server to client"
-         * - "It has this address on it"
-         * - "Here's how to read the contents"
-         * - "When it arrives, call this handler"
+         * SyncPlayerDataPacket - Unified sync for EMC + learned items + favorites
+         * This replaces the old separate SyncEMCPacket and SyncLearnedItemsPacket
          */
-        registrar.playToClient(
-            SyncEMCPacket.PACKET_ID,
-            SyncEMCPacket.STREAM_CODEC,
-            SyncEMCPacket::handleClient
-        );
         registrar.playToClient(
                 SyncNeoPlateDataPacket.PACKET_ID,
                 SyncNeoPlateDataPacket.STREAM_CODEC,
                 SyncNeoPlateDataPacket::handleClient
         );
         registrar.playToClient(
-                SyncLearnedItemsPacket.PACKET_ID,
-                SyncLearnedItemsPacket.STREAM_CODEC,
-                SyncLearnedItemsPacket::handleClient
+                SyncPlayerDataPacket.TYPE,
+                SyncPlayerDataPacket.STREAM_CODEC,
+                SyncPlayerDataPacket::handle
         );
         
-        // Client-to-Server packets
+        // ===== CLIENT → SERVER PACKETS =====
         registrar.playToServer(
                 CreateItemPacket.TYPE,
                 CreateItemPacket.STREAM_CODEC,
@@ -79,6 +60,20 @@ public class NetworkHandler {
                 UpdateSearchTextPacket.TYPE,
                 UpdateSearchTextPacket.STREAM_CODEC,
                 UpdateSearchTextPacket::handle
+        );
+
+        // Scroll position sync
+        registrar.playToServer(
+                SyncScrollOffsetPacket.TYPE,
+                SyncScrollOffsetPacket.STREAM_CODEC,
+                SyncScrollOffsetPacket::handle
+        );
+
+        // Favorite toggle
+        registrar.playToServer(
+                ToggleFavoritePacket.TYPE,
+                ToggleFavoritePacket.STREAM_CODEC,
+                ToggleFavoritePacket::handle
         );
 
         NeoExchange.LOGGER.info("Network packets registered successfully!");

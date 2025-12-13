@@ -11,27 +11,66 @@ import com.badiei.neoexchange.NeoExchange;
 public record SyncNeoPlateDataPacket(
         long playerEMC,
         long lastEMCGained,
+        long lastEMCLost,
         boolean wasNew,
         String itemName,
         String itemName2,
+        String itemName3,
         int displayTimer,
-        int UdisplayTimer
+        int UdisplayTimer,
+        int LdisplayTimer,
+        boolean refreshVirtualSlots  // NEW: Signal to refresh the virtual slots
 ) implements CustomPacketPayload {
 
     public static final Type<SyncNeoPlateDataPacket> PACKET_ID =
             new Type<>(ResourceLocation.fromNamespaceAndPath(NeoExchange.MOD_ID, "sync_neo_plate"));
 
-    public static final StreamCodec<ByteBuf, SyncNeoPlateDataPacket> STREAM_CODEC =
-            StreamCodec.composite(
-                    ByteBufCodecs.VAR_LONG, SyncNeoPlateDataPacket::playerEMC,
-                    ByteBufCodecs.VAR_LONG, SyncNeoPlateDataPacket::lastEMCGained,
-                    ByteBufCodecs.BOOL, SyncNeoPlateDataPacket::wasNew,
-                    ByteBufCodecs.STRING_UTF8, SyncNeoPlateDataPacket::itemName,
-                    ByteBufCodecs.STRING_UTF8, SyncNeoPlateDataPacket::itemName2,
-                    ByteBufCodecs.VAR_INT, SyncNeoPlateDataPacket::displayTimer,
-                    ByteBufCodecs.VAR_INT, SyncNeoPlateDataPacket::UdisplayTimer,
-                    SyncNeoPlateDataPacket::new
+    // Custom codec because we have more than 9 fields
+    public static final StreamCodec<ByteBuf, SyncNeoPlateDataPacket> STREAM_CODEC = new StreamCodec<>() {
+        @Override
+        public SyncNeoPlateDataPacket decode(ByteBuf buffer) {
+            long playerEMC = ByteBufCodecs.VAR_LONG.decode(buffer);
+            long lastEMCGained = ByteBufCodecs.VAR_LONG.decode(buffer);
+            long lastEMCLost = ByteBufCodecs.VAR_LONG.decode(buffer);
+            boolean wasNew = buffer.readBoolean();
+            String itemName = ByteBufCodecs.STRING_UTF8.decode(buffer);
+            String itemName2 = ByteBufCodecs.STRING_UTF8.decode(buffer);
+            String itemName3 = ByteBufCodecs.STRING_UTF8.decode(buffer);
+            int displayTimer = ByteBufCodecs.VAR_INT.decode(buffer);
+            int UdisplayTimer = ByteBufCodecs.VAR_INT.decode(buffer);
+            int LdisplayTimer = ByteBufCodecs.VAR_INT.decode(buffer);
+            boolean refreshVirtualSlots = buffer.readBoolean();  // NEW
+
+            return new SyncNeoPlateDataPacket(
+                    playerEMC,
+                    lastEMCGained,
+                    lastEMCLost,
+                    wasNew,
+                    itemName,
+                    itemName2,
+                    itemName3,
+                    displayTimer,
+                    UdisplayTimer,
+                    LdisplayTimer,
+                    refreshVirtualSlots
             );
+        }
+
+        @Override
+        public void encode(ByteBuf buffer, SyncNeoPlateDataPacket packet) {
+            ByteBufCodecs.VAR_LONG.encode(buffer, packet.playerEMC);
+            ByteBufCodecs.VAR_LONG.encode(buffer, packet.lastEMCGained);
+            ByteBufCodecs.VAR_LONG.encode(buffer, packet.lastEMCLost);
+            buffer.writeBoolean(packet.wasNew);
+            ByteBufCodecs.STRING_UTF8.encode(buffer, packet.itemName);
+            ByteBufCodecs.STRING_UTF8.encode(buffer, packet.itemName2);
+            ByteBufCodecs.STRING_UTF8.encode(buffer, packet.itemName3);
+            ByteBufCodecs.VAR_INT.encode(buffer, packet.displayTimer);
+            ByteBufCodecs.VAR_INT.encode(buffer, packet.UdisplayTimer);
+            ByteBufCodecs.VAR_INT.encode(buffer, packet.LdisplayTimer);
+            buffer.writeBoolean(packet.refreshVirtualSlots);  // NEW
+        }
+    };
 
     @Override
     public Type<? extends CustomPacketPayload> type() {
@@ -42,18 +81,7 @@ public record SyncNeoPlateDataPacket(
     public static void handleClient(SyncNeoPlateDataPacket packet,
                                     net.neoforged.neoforge.network.handling.IPayloadContext context) {
         context.enqueueWork(() -> {
-            // Update the menu on client side
-            if (context.player().containerMenu instanceof NeoPlateMenu menu) {
-                menu.receiveDataFromServer(
-                        packet.playerEMC(),
-                        packet.lastEMCGained(),
-                        packet.wasNew(),
-                        packet.itemName(),
-                        packet.itemName2(),
-                        packet.displayTimer(),
-                        packet.UdisplayTimer()
-                );
-            }
+            ClientPacketHandlers.handleSyncNeoPlateData(packet);
         });
     }
 }

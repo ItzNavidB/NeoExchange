@@ -181,12 +181,19 @@ public class VirtualEMCSlot extends Slot {
      */
     @Override
     public void onTake(Player player, ItemStack stack) {
+        LOGGER.info("onTake called: currentItem={}, stack={}, isClient={}",
+                currentItem, stack.getItem(), player.level().isClientSide());
+        
         if (currentItem == Items.AIR) {
+            LOGGER.warn("onTake called but currentItem is AIR!");
             return; // Nothing to take
         }
 
         // Process the EMC transaction and get result
         PurchaseResult result = processEMCPurchaseWithResult(player, stack);
+        
+        LOGGER.info("Purchase result: success={}, emcSpent={}, count={}",
+                result.success, result.emcSpent, result.itemCount);
 
         // Notify menu if we have a callback (for EMC loss display)
         if (result.success && emcSpentCallback != null && !player.level().isClientSide()) {
@@ -415,5 +422,17 @@ public class VirtualEMCSlot extends Slot {
      */
     public static boolean isVirtualSlot(Slot slot) {
         return slot instanceof VirtualEMCSlot;
+    }
+
+    /**
+     * Check if the current item is favorited
+     */
+    public boolean isCurrentItemFavorited() {
+        if (currentItem == null || currentItem == Items.AIR) {
+            return false;
+        }
+
+        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+        return emcData.isFavorited(currentItem);
     }
 }

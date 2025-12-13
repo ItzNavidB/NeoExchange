@@ -2,7 +2,6 @@ package com.badiei.neoexchange.client;
 
 import com.badiei.neoexchange.NeoExchange;
 import com.badiei.neoexchange.emc.EMCHelper;
-import com.badiei.neoexchange.emc.EMCHelperNBT;
 import com.mojang.logging.LogUtils;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;

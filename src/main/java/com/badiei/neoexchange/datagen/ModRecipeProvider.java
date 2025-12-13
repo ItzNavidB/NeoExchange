@@ -82,10 +82,12 @@ public class ModRecipeProvider extends RecipeProvider {
                 .save(this.output);
 
         ShapedRecipeBuilder.shaped(this.registries.lookupOrThrow(Registries.ITEM), RecipeCategory.MISC, NeoItems.EPIC_STONE, 1)
-                .pattern("RRR")
-                .pattern("RNR")
-                .pattern("RRR")
+                .pattern("EEE")
+                .pattern("ENE")
+                .pattern("RWR")
                 .define('R', Items.NETHERITE_INGOT)
+                .define('E', Items.EMERALD_BLOCK)
+                .define('W', Items.WITHER_SKELETON_SKULL)
                 .define('N', NeoItems.RARE_STONE)
                 .unlockedBy("has_neo_stone", has(NeoItems.NEO_STONE))
                 .save(this.output);

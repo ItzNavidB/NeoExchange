@@ -37,9 +37,10 @@ public class PlayerEMCData {
      *
      * @param emc The saved EMC balance
      * @param learnedItemStrings The saved learned items as strings
+     * @param favoritedItemStrings The saved favorited items as strings
      * @return A new PlayerEMCData with the loaded data
      */
-    public static PlayerEMCData fromSavedData(long emc, java.util.List<String> learnedItemStrings) {
+    public static PlayerEMCData fromSavedData(long emc, java.util.List<String> learnedItemStrings, java.util.List<String> favoritedItemStrings) {
         PlayerEMCData data = new PlayerEMCData(emc);
 
         // Parse each string back into an item and learn it
@@ -55,6 +56,21 @@ public class PlayerEMCData {
             } catch (Exception e) {
                 // Skip invalid item IDs (maybe from removed mods)
                 LOGGER.warn("Failed to load learned item: {}", itemIdString);
+            }
+        }
+
+        // Parse favorited items
+        for (String itemIdString : favoritedItemStrings) {
+            try {
+                ResourceLocation itemId = ResourceLocation.parse(itemIdString);
+                java.util.Optional<net.minecraft.world.item.Item> item =
+                        BuiltInRegistries.ITEM.getOptional(itemId);
+
+                if (item.isPresent()) {
+                    data.favoriteItem(item.get());
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Failed to load favorited item: {}", itemIdString);
             }
         }
 
@@ -187,9 +203,24 @@ public class PlayerEMCData {
     /**
      * Copy data from another PlayerEMCData instance
      * Useful when a player respawns or travels between dimensions
+     *
+     * CRITICAL: This must copy ALL player data (EMC AND learned items AND favorites)
+     * otherwise data will be lost when changing dimensions!
      */
     public void copyFrom(PlayerEMCData other) {
+        // Copy EMC balance
         this.emcBalance = other.emcBalance;
+
+        // Copy learned items
+        this.learnedItems.clear();
+        this.learnedItems.addAll(other.learnedItems);
+
+        // Copy favorited items
+        this.favoritedItems.clear();
+        this.favoritedItems.addAll(other.favoritedItems);
+
+        LOGGER.debug("Copied player data: {} EMC, {} learned items, {} favorited items",
+                this.emcBalance, this.learnedItems.size(), this.favoritedItems.size());
     }
 
     /**
@@ -202,6 +233,7 @@ public class PlayerEMCData {
 
 
     private final Set<ResourceLocation> learnedItems = new HashSet<>();
+    private final Set<ResourceLocation> favoritedItems = new HashSet<>();  // Items marked as favorites
 
     public boolean hasLearned(Item item) {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
@@ -241,5 +273,78 @@ public class PlayerEMCData {
 
     public void clearLearneditemsList() {
         learnedItems.clear();
+    }
+
+    // ========================================
+    // Favoriting Methods
+    // ========================================
+
+    /**
+     * Check if an item is marked as favorite
+     */
+    public boolean isFavorited(Item item) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        return favoritedItems.contains(itemId);
+    }
+
+    /**
+     * Mark an item as favorite
+     * Note: The item must be learned first!
+     */
+    public void favoriteItem(Item item) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+
+        // Only favorite learned items
+        if (!learnedItems.contains(itemId)) {
+            LOGGER.warn("Cannot favorite unlearned item: {}", itemId);
+            return;
+        }
+
+        favoritedItems.add(itemId);
+        LOGGER.debug("Favorited item: {}", itemId);
+    }
+
+    /**
+     * Remove item from favorites
+     */
+    public void unfavoriteItem(Item item) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+        favoritedItems.remove(itemId);
+        LOGGER.debug("Unfavorited item: {}", itemId);
+    }
+
+    /**
+     * Toggle favorite status of an item
+     * @return true if item is now favorited, false if unfavorited
+     */
+    public boolean toggleFavorite(Item item) {
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+
+        if (!learnedItems.contains(itemId)) {
+            LOGGER.warn("Cannot favorite unlearned item: {}", itemId);
+            return false;
+        }
+
+        if (favoritedItems.contains(itemId)) {
+            favoritedItems.remove(itemId);
+            return false;  // Now unfavorited
+        } else {
+            favoritedItems.add(itemId);
+            return true;   // Now favorited
+        }
+    }
+
+    /**
+     * Get all favorited items (for serialization and syncing)
+     */
+    public Set<ResourceLocation> getFavoritedItems() {
+        return new HashSet<>(favoritedItems);
+    }
+
+    /**
+     * Clear all favorited items
+     */
+    public void clearFavorites() {
+        favoritedItems.clear();
     }
 }

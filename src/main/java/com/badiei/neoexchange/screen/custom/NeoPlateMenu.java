@@ -68,6 +68,9 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     private int maxEMC = 0;
     private String searchText = "";  // Search filter for item names
 
+    //Template slot managment
+    private Item templateItem = null;
+
     public NeoPlateMenu(int containerId, Inventory inv, FriendlyByteBuf extraData) {
         this(containerId, inv, inv.player.level().getBlockEntity(extraData.readBlockPos()));
     }
@@ -94,8 +97,10 @@ public class NeoPlateMenu extends AbstractContainerMenu {
                 this.blockEntity.inventory,
                 level,
                 this::processBurnerSlot,
+                this::processLearnSlot,
                 this::processUnlearnSlot,
-                this::processStoneSlot
+                this::processStoneSlot,
+                this::processTemplateSlot
         );
         for (Slot slot : fixedSlots) {
             this.addSlot(slot);
@@ -132,15 +137,17 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     private static final int VANILLA_FIRST_SLOT_INDEX = 0;
     private static final int TE_INVENTORY_FIRST_SLOT_INDEX = VANILLA_FIRST_SLOT_INDEX + VANILLA_SLOT_COUNT;
 
-    private static final int FIXED_SLOT_COUNT = 3;  // Stone, Burner, Unlearn
+    private static final int FIXED_SLOT_COUNT = 5;  // Stone, Burner, Learn, Unlearn, Template
     private static final int VIRTUAL_SLOT_COUNT = NeoPlateMenuSlots.getTotalGridSlots();  // 20
     private static final int TE_INVENTORY_SLOT_COUNT = FIXED_SLOT_COUNT + VIRTUAL_SLOT_COUNT;  // 23 total
 
     // Individual slot indices for special handling
     private static final int STONE_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX;      // 36
     private static final int BURNER_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 1; // 37
-    private static final int UNLEARN_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 2; // 38
-    private static final int VIRTUAL_SLOTS_START_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 3; // 39
+    private static final int LEARN_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 2; // 37
+    private static final int UNLEARN_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 3; // 38
+    private static final int TEMPLATE_SLOT_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 4; // 39
+    private static final int VIRTUAL_SLOTS_START_INDEX = TE_INVENTORY_FIRST_SLOT_INDEX + 5; // 40
 
     /**
      * Handle shift-clicking items
@@ -152,6 +159,23 @@ public class NeoPlateMenu extends AbstractContainerMenu {
      * 2. For virtual EMC slots: Buy items with EMC and add to inventory
      * 3. For regular slots: Move items between inventories
      */
+    @Override
+    public void clicked(int slotId, int button, ClickType clickType, Player player) {
+        // If clicking a virtual slot, make sure server knows what item is there
+        if (slotId >= 0 && slotId < slots.size()) {
+            Slot slot = slots.get(slotId);
+            
+            if (slot instanceof VirtualEMCSlot virtualSlot) {
+                // Log what the server thinks is in this slot
+                LOGGER.info("Server processing click on virtual slot {}: currentItem={}",
+                        slotId, virtualSlot.getCurrentItem());
+            }
+        }
+        
+        // Let vanilla handle the click
+        super.clicked(slotId, button, clickType, player);
+    }
+
     @Override
     public ItemStack quickMoveStack(Player playerIn, int pIndex) {
         Slot sourceSlot = slots.get(pIndex);
@@ -356,7 +380,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
             playerEMCBalance = currentBalance;
 
             // ✨ THE MAGIC: Update the virtual grid when EMC changes
-            updateVirtualSlots();
+            //updateVirtualSlots();
         }
 
         sendDataToClient();
@@ -381,7 +405,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
      * - Slots 0-9 show the 10 items
      * - Slots 10-19 are empty
      */
-    private void updateVirtualSlots() {
+    public void updateVirtualSlots() {
         // Step 1: Build the display list
         // This list is filtered, sorted, and ready to display
         ItemStack stone = this.blockEntity.inventory.getStackInSlot(0);
@@ -393,7 +417,8 @@ public class NeoPlateMenu extends AbstractContainerMenu {
                 scrollOffset,
                 filterAffordableOnly,
                 maxEMC,
-                searchText
+                searchText,
+                templateItem
         );
 
         // Step 2: Map the list to slots
@@ -457,10 +482,31 @@ public class NeoPlateMenu extends AbstractContainerMenu {
      *
      * This can be called from the GUI (future scrollbar)
      */
+    /**
+     * Set the scroll offset for pagination
+     *
+     * The offset is automatically clamped to valid range:
+     * - Minimum: 0 (first page)
+     * - Maximum: (totalItems / columns) - rows + 1
+     *
+     * Example: 50 items, 4 columns, 5 rows visible
+     * - Total rows = 50/4 = 13 rows
+     * - Max offset = 13 - 5 + 1 = 9
+     *
+     * @param offset The desired scroll offset
+     */
     public void setScrollOffset(int offset) {
-        this.scrollOffset = Math.max(0, offset);
+        // Calculate maximum valid offset
+        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+        int totalLearnedItems = emcData.getLearnedItems().size();
+        int totalRows = (int) Math.ceil((double) totalLearnedItems / NeoPlateMenuSlots.getGridColumns());
+        int maxOffset = Math.max(0, totalRows - NeoPlateMenuSlots.getGridRows() + 1);
+
+        // Clamp to valid range
+        this.scrollOffset = Math.max(0, Math.min(offset, maxOffset));
+
         updateVirtualSlots();
-        LOGGER.info("Scroll offset set to: {}", scrollOffset);
+        LOGGER.debug("Scroll offset set to: {} (max: {})", scrollOffset, maxOffset);
     }
 
     /**
@@ -548,24 +594,50 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     }
 
     private void processStoneSlot(ItemStack stack) {
-        if (level.isClientSide() || player == null || stack.isEmpty()) {
+        if (level.isClientSide() || player == null) {
             return;
         }
 
-        // No special processing needed server-side for stone changes
-        // The stone slot is handled automatically by the block entity
-
-        LOGGER.info("Player {} changed Neo Stone to {}", player.getName().getString(), stack.getItem());
+        LOGGER.info("Player {} changed Neo Stone to {}", player.getName().getString(), 
+                    stack.isEmpty() ? "EMPTY" : stack.getItem());
 
         // Update the maxEMC based on the new stone
         NeoStoneType stoneType = NeoStoneType.COMMON;
-        if (stack.getItem() instanceof NeoStoneItem neoStone) {
+        if (!stack.isEmpty() && stack.getItem() instanceof NeoStoneItem neoStone) {
             stoneType = neoStone.getStoneType();
         }
         maxEMC = stoneType.getMaxEMC();
 
-        // Update the virtual slots to reflect new maxEMC
+        // Update the virtual slots on the SERVER
         updateVirtualSlots();
+        
+        // Tell client to refresh virtual slots
+        sendDataToClient(true);
+    }
+
+    private void processLearnSlot(ItemStack stack) {
+        if (level.isClientSide() || player == null || stack.isEmpty()) {
+            return;
+        }
+
+        Item item = stack.getItem();
+        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+
+        Boolean isLearned = emcData.hasLearned(item);
+        if (isLearned) {
+            return;
+        }
+
+        emcData.learnItem(item);
+        EMCHelper.syncLearnedItems(player);
+
+        // An item was learned, update the grid!
+        updateVirtualSlots();
+        
+        // Tell client to refresh
+        sendDataToClient(true);
+
+        LOGGER.info("Player {} learned {}", player.getName().getString(), item);
     }
 
     private void processUnlearnSlot(ItemStack stack) {
@@ -585,13 +657,53 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         unlearnDisplayTimer = UNLEARN_DISPLAY_DURATION;
 
         emcData.unLearnItem(item);
-        sendDataToClient();
         EMCHelper.syncLearnedItems(player);
 
         // An item was unlearned, update the grid!
         updateVirtualSlots();
+        
+        // Tell client to refresh
+        sendDataToClient(true);
 
         LOGGER.info("Player {} unlearned {}", player.getName().getString(), item);
+    }
+
+    /**
+     * Process the template slot when it changes
+     *
+     * This does TWO things:
+     * 1. Automatically learns the item (without consuming it!)
+     * 2. Triggers grid filtering by this item type
+     *
+     * @param stack The item in the template slot
+     */
+    private void processTemplateSlot(ItemStack stack) {
+        if (level.isClientSide() || player == null) {
+            return;
+        }
+
+        if (stack.isEmpty()) {
+            this.templateItem = null;
+        } else {
+            Item item = stack.getItem();
+
+            // Learn the item
+            PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+            boolean wasNew = !emcData.hasLearned(item);
+
+            if (wasNew) {
+                emcData.learnItem(item);
+                EMCHelper.syncToClient(player);  // Sync immediately
+                // Update virtual slots AFTER learning
+                updateVirtualSlots();
+            }
+
+            this.templateItem = item;
+        }
+
+        // Update grid SERVER-SIDE
+        // (Client will get slot changes via normal container sync)
+        updateVirtualSlots();
     }
 
     @Override
@@ -657,32 +769,84 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         return unlearnDisplayTimer / 40.0f;
     }
 
-    public void receiveDataFromServer(long emc, long gained, boolean wasNew,
-                                      String name, String name2, int timer, int uTimer) {
+    public void receiveDataFromServer(long emc, long gained, long lost, boolean wasNew,
+                                      String name, String name2, String name3,
+                                      int timer, int uTimer, int lTimer) {
         this.playerEMCBalance = emc;
         this.lastEMCGained = gained;
+        this.lastEMCLost = lost;  // ✨ ADDED
         this.lastItemWasNew = wasNew;
         this.lastItemName = name;
         this.lastItemName2 = name2;
+        this.lastItemName3 = name3;  // ✨ ADDED
         this.emcGainedDisplayTimer = timer;
         this.unlearnDisplayTimer = uTimer;
+        this.emcLostDisplayTimer = lTimer;  // ✨ ADDED
 
-        // Update virtual slots on client side too!
-        updateVirtualSlots();
+        // ❌ DO NOT call updateVirtualSlots() here!
+        // The screen handles scrolling client-side
+        // Calling this resets scroll position to 0
     }
 
     private void sendDataToClient() {
+        sendDataToClient(false);  // Default: don't refresh virtual slots
+    }
+    
+    private void sendDataToClient(boolean refreshVirtualSlots) {
         if (player instanceof ServerPlayer serverPlayer) {
             SyncNeoPlateDataPacket packet = new SyncNeoPlateDataPacket(
                     playerEMCBalance,
                     lastEMCGained,
+                    lastEMCLost,
                     lastItemWasNew,
                     lastItemName,
                     lastItemName2,
+                    lastItemName3,
                     emcGainedDisplayTimer,
-                    unlearnDisplayTimer
+                    unlearnDisplayTimer,
+                    emcLostDisplayTimer,
+                    refreshVirtualSlots  // NEW: Tell client whether to refresh
             );
             PacketDistributor.sendToPlayer(serverPlayer, packet);
         }
     }
+
+    /**
+     * Get the current scroll offset
+     */
+    public int getScrollOffset() {
+        return scrollOffset;
+    }
+
+    /**
+     * Client-side access to menu state for filtering/scrolling
+     */
+    public boolean isFilterAffordableOnly() {
+        return filterAffordableOnly;
+    }
+
+    public int getMaxEMC() {
+        return maxEMC;
+    }
+
+
+    public Item getTemplateItem() {
+        return templateItem;
+    }
+
+    /**
+     * Called by the client when learned items are synced from the server
+     * This refreshes the virtual slot grid to show newly learned items
+     */
+    public void onLearnedItemsUpdated() {
+        if (level.isClientSide()) {
+            updateVirtualSlots();
+            LOGGER.debug("Client-side virtual slots refreshed after learned items sync");
+        }
+    }
+
+    public int getVirtualSlotStartIndex() {
+        return virtualSlotStartIndex;
+    }
+
 }

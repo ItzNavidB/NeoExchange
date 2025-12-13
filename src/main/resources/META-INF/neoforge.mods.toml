@@ -14,6 +14,11 @@ license="${mod_license}"
 # A list of mods - how many allowed here is determined by the individual mod loader
 [[mods]] #mandatory
 
+# Register our config screen so it appears in the mod menu
+# When players click "Config" for NeoExchange, this screen will open
+# References the static create() method in NeoExchangeConfigScreenFactory
+configScreenFactory="com.badiei.neoexchange.client.gui.NeoExchangeConfigScreenFactory::create"
+
 # The modid of the mod
 modId="${mod_id}" #mandatory
 

@@ -56,9 +56,15 @@ public class NeoPlateTemplate extends BaseEntityBlock {
             // Get the block entity
             BlockEntity blockEntity = level.getBlockEntity(pos);
             if (blockEntity instanceof NeoPlateEntity neoPlateEntity) {
-                if (!level.isClientSide() && player instanceof ServerPlayer serverPlayer)
-                // Open the inventory GUI for the player
-                serverPlayer.openMenu(neoPlateEntity, pos);
+                if (!level.isClientSide() && player instanceof ServerPlayer serverPlayer) {
+                    // CRITICAL: Sync player data BEFORE opening menu!
+                    // This ensures the client has up-to-date learned items when the GUI renders
+                    // Especially important after dimension changes or respawning
+                    com.badiei.neoexchange.emc.EMCHelper.syncToClient(serverPlayer);
+                    
+                    // Open the inventory GUI for the player
+                    serverPlayer.openMenu(neoPlateEntity, pos);
+                }
                 return InteractionResult.SUCCESS;
             }
         }

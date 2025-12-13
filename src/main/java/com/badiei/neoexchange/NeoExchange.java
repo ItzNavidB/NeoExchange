@@ -2,6 +2,7 @@ package com.badiei.neoexchange;
 
 import com.badiei.neoexchange.NeoCreativeModeTabs;
 import com.badiei.neoexchange.blocks.NeoBlocks;
+import com.badiei.neoexchange.config.ClientConfig;
 import com.badiei.neoexchange.blocks.entity.NeoBlockEntities;
 import com.badiei.neoexchange.blocks.entity.NeoPlateEntity;
 import com.badiei.neoexchange.blocks.entity.renderer.NeoPlateEntityRenderer;
@@ -69,7 +70,8 @@ public class NeoExchange {
         NeoAttachments.register(modEventBus);
 
         // Register our mod's ModConfigSpec so that FML can create and load the config file for us
-        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        // CLIENT config is stored in .minecraft/config/neoexchange-client.toml
+        modContainer.registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC);
 
 
 

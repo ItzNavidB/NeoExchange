@@ -1,6 +1,7 @@
 package com.badiei.neoexchange.blocks.entity.renderer;
 
 import com.badiei.neoexchange.blocks.entity.NeoPlateEntity;
+import com.badiei.neoexchange.config.ClientConfig;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.renderer.LightTexture;
@@ -82,14 +83,19 @@ public class NeoPlateEntityRenderer implements BlockEntityRenderer<NeoPlateEntit
         // POSITION: Center the item in the block and set height
         // 0.5f, 0.5f = center of block horizontally
         // yLocation/4 + 0.6f = vertical position (with bobbing animation)
-        poseStack.translate(0.5f, renderState.yLocation / 4 + 0.6f, 0.5f);
+        // Check if animations are enabled in config
+        float yOffset = ClientConfig.ENABLE_ITEM_ANIMATIONS.get() ? renderState.yLocation / 4 + 0.6f : 0.6f;
+        poseStack.translate(0.5f, yOffset, 0.5f);
 
         // SCALE: Make the item half size (0.5 = 50%)
         poseStack.scale(0.5f, 0.5f, 0.5f);
 
         // ROTATION: Spin the item around the Y axis (vertical spin)
         // Using just Y rotation now - the item spins flat
-        poseStack.mulPose(Axis.YP.rotationDegrees(renderState.rotation));
+        // Only rotate if animations are enabled
+        if (ClientConfig.ENABLE_ITEM_ANIMATIONS.get()) {
+            poseStack.mulPose(Axis.YP.rotationDegrees(renderState.rotation));
+        }
 
         // Submit the item for rendering with proper lighting
         renderState.itemStackRenderState.submit(

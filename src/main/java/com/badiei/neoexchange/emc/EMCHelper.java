@@ -2,9 +2,7 @@ package com.badiei.neoexchange.emc;
 
 import com.badiei.neoexchange.economy.NeoStoneType;
 import com.badiei.neoexchange.items.NeoStoneItem;
-import com.badiei.neoexchange.network.SyncEMCPacket;
-import com.badiei.neoexchange.network.SyncLearnedItemsPacket;
-import net.minecraft.core.registries.BuiltInRegistries;
+import com.badiei.neoexchange.network.SyncPlayerDataPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -16,6 +14,7 @@ import com.mojang.logging.LogUtils;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * EMCHelper - Utility class for EMC operations
@@ -189,86 +188,9 @@ public class EMCHelper {
         return Optional.of(totalValue);
     }
 
-    /**
-     * Convert an ItemStack to EMC and add it to a player's balance
-     * This is the "learn" or "transmute to EMC" operation
-     *
-     * Now with durability support! Damaged items give less EMC.
-     *
-     * @param player The player
-     * @param stack The item stack to convert
-     * @return The amount of EMC gained, or -1 if the item has no EMC value
-     */
-    public static long convertToEMC(Player player, ItemStack stack) {
-        // Use the durability-aware method instead of the basic one
-        // This means damaged tools/armor will give proportionally less EMC
-        Optional<Long> emcValue = getStackEMCWithDurability(stack);
-
-        if (emcValue.isEmpty()) {
-            LOGGER.debug("Item {} has no EMC value", stack.getItem());
-            return -1;
-        }
-
-        long totalEMC = emcValue.get();
-
-        if (addEMC(player, totalEMC)) {
-            LOGGER.debug("Player {} converted {} x{} to {} EMC",
-                    player.getName().getString(),
-                    stack.getItem(),
-                    stack.getCount(),
-                    totalEMC);
-            return totalEMC;
-        }
-
-        return -1;
-    }
-
-    /**
-     * Try to create an ItemStack by spending EMC
-     * This is the "transmute from EMC" operation
-     *
-     * @param player The player
-     * @param item The item to create
-     * @param count How many to create
-     * @return The created ItemStack, or ItemStack.EMPTY if failed
-     */
-    public static ItemStack createFromEMC(Player player, Item item, int count) {
-        Optional<Long> baseEMC = getItemEMC(item);
-
-        if (baseEMC.isEmpty()) {
-            LOGGER.debug("Item {} has no EMC value", item);
-            return ItemStack.EMPTY;
-        }
-
-        long totalCost = baseEMC.get() * count;
-
-        if (!hasEMC(player, totalCost)) {
-            LOGGER.debug("Player {} does not have enough EMC (needs {}, has {})",
-                    player.getName().getString(),
-                    totalCost,
-                    getBalance(player));
-            return ItemStack.EMPTY;
-        }
-
-        if (removeEMC(player, totalCost)) {
-            LOGGER.debug("Player {} created {} x{} for {} EMC",
-                    player.getName().getString(),
-                    item,
-                    count,
-                    totalCost);
-            return new ItemStack(item, count);
-        }
-
-        return ItemStack.EMPTY;
-    }
-
-    /**
-     * Check if a player can afford to create an item
-     */
-    public static boolean canAfford(Player player, Item item, int count) {
-        return getItemEMC(item)
-                .map(baseEMC -> hasEMC(player, baseEMC * count))
-                .orElse(false);
+    public static void learnItem(Player player, Item item) {
+        PlayerEMCData data = getPlayerEMC(player);
+        data.learnItem(item);
     }
 
     /**
@@ -278,58 +200,68 @@ public class EMCHelper {
         return getPlayerEMC(player).getFormattedEMC();
     }
 
-    public static void syncALL(Player player) {
-        syncEMC(player);
-        syncLearnedItems(player);
+    /**
+     * Synchronize ALL player data from server to client
+     * 
+     * This is the ONE method to sync everything:
+     * - EMC balance
+     * - Learned items
+     * - Favorited items
+     * 
+     * Called whenever:
+     * - Player opens NeoPlate GUI
+     * - Player learns a new item
+     * - Player toggles favorite
+     * - Player logs in or changes dimension
+     * - EMC balance changes
+     */
+    public static void syncToClient(Player player) {
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            return;
+        }
+
+        PlayerEMCData emcData = getPlayerEMC(player);
+
+        // Get current EMC
+        long currentEMC = emcData.getEMC();
+
+        // Get learned items
+        List<String> learnedItemStrings = emcData.getLearnedItems().stream()
+                .map(ResourceLocation::toString)
+                .toList();
+
+        // Get favorited items
+        List<String> favoritedItemStrings = emcData.getFavoritedItems().stream()
+                .map(ResourceLocation::toString)
+                .toList();
+
+        // Send unified sync packet
+        PacketDistributor.sendToPlayer(
+                serverPlayer,
+                new SyncPlayerDataPacket(currentEMC, learnedItemStrings, favoritedItemStrings)
+        );
+
+        LOGGER.debug("Synced to {}: {} EMC, {} learned items, {} favorites",
+                serverPlayer.getName().getString(),
+                currentEMC,
+                learnedItemStrings.size(),
+                favoritedItemStrings.size());
     }
 
     /**
-     * Synchronize EMC from server to client
-     *
-     * This method sends a packet to the client with the player's current EMC balance.
-     * It only works on the server side - calling it on the client does nothing.
-     *
-     * Why check if it's ServerPlayer?
-     * - ServerPlayer = server-side player object
-     * - Player (client) = client-side player object
-     * - We only send packets FROM server TO client
-     *
-     * @param player The player whose EMC should be synced
+     * @deprecated Use syncToClient() instead
      */
+    @Deprecated
     public static void syncEMC(Player player) {
-        // Only send packets from the server side
-        if (player instanceof ServerPlayer serverPlayer) {
-            long balance = getBalance(player);
-
-            // Create and send the packet to this specific player
-            PacketDistributor.sendToPlayer(serverPlayer, new SyncEMCPacket(balance));
-
-            LOGGER.debug("Synced EMC to client: {} for player {}",
-                    balance, player.getName().getString());
-        }
+        syncToClient(player);
     }
 
     /**
-     * Synchronize learned items from server to client
-     *
-     * @param player The player whose learned items should be synced
+     * @deprecated Use syncToClient() instead
      */
+    @Deprecated
     public static void syncLearnedItems(Player player) {
-        // Only send packets from the server side
-        if (player instanceof ServerPlayer serverPlayer) {
-            PlayerEMCData emcData = getPlayerEMC(player);
-
-            // Convert learned items to strings for transmission
-            List<String> itemStrings = emcData.getLearnedItems().stream()
-                    .map(ResourceLocation::toString)
-                    .toList();
-
-            // Create and send the packet
-            PacketDistributor.sendToPlayer(serverPlayer, new SyncLearnedItemsPacket(itemStrings));
-
-            LOGGER.debug("Synced {} learned items to client for player {}",
-                    itemStrings.size(), player.getName().getString());
-        }
+        syncToClient(player);
     }
 
     public static List<Item> getLearnedItems(Player player) {

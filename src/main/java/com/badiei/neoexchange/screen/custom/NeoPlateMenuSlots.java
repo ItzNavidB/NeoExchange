@@ -21,6 +21,7 @@ import net.neoforged.neoforge.items.SlotItemHandler;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -54,8 +55,10 @@ public class NeoPlateMenuSlots {
             IItemHandler inventory,
             Level level,
             SlotChangeCallback burnerCallback,
+            SlotChangeCallback learnCallback,
             SlotChangeCallback unlearnCallback,
-            SlotChangeCallback stoneCallback
+            SlotChangeCallback stoneCallback,
+            SlotChangeCallback templateCallback
     ) {
 
         List<Slot> slots = new ArrayList<>();
@@ -66,10 +69,16 @@ public class NeoPlateMenuSlots {
         // Slot 1: Burner slot
         slots.add(createBurnerSlot(inventory, level, burnerCallback));
 
-        // Slot 2: Unlearn slot
+        // Slot 2: Learn slot
+        slots.add(createLearnSlot(inventory, level, learnCallback));
+
+        // Slot 3: Unlearn slot
         slots.add(createUnlearnSlot(inventory, level, unlearnCallback));
 
-        LOGGER.debug("Created 3 fixed slots for Neo Plate menu");
+        // Slot 4: Template slot
+        slots.add(createTemplateSlot(inventory, level, templateCallback));
+
+        LOGGER.debug("Created 4 fixed slots for Neo Plate menu");
         return slots;
     }
 
@@ -114,80 +123,174 @@ public class NeoPlateMenuSlots {
     }
 
     /**
-     * Build the list of items that should be displayed in the virtual grid
+     * Build the list of items to display in the virtual grid
      *
-     * This is where all the magic happens:
-     * - Filter by affordability
-     * - Filter by Neo Stone max EMC
-     * - Filter by search text ✨ NEW!
-     * - Sort by your preference (future)
-     * - Paginate (future)
+     * NEW FEATURES:
+     * - Favorites appear first (gold star icon)
+     * - Template filter shows similar items next
+     * - Search still works
+     * - Scrolling pages through results
      *
-     * The returned list is what gets mapped to the fixed grid of slots.
+     * Sorting priority:
+     * 1. Favorited items (by EMC, highest first)
+     * 2. Items similar to template (by similarity score)
+     * 3. All other learned items (by EMC, highest first)
      *
      * @param player The player
-     * @param scrollOffset For pagination (0 = first page)
-     * @param filterAffordableOnly If true, only show items player can afford
-     * @param maxEMC The maximum EMC value based on Neo Stone tier
-     * @param searchText Filter items by name (empty string = show all)
-     * @return List of items to display in the grid
+     * @param scrollOffset Row offset for pagination (0 = first page)
+     * @param filterAffordableOnly Show only affordable items?
+     * @param maxEMC Maximum EMC based on Neo Stone tier
+     * @param searchText Search filter (empty = show all)
+     * @param templateItem Template filter item (null = no filter)
+     * @return List of items to display, properly sorted and filtered
      */
     public static List<Item> buildDisplayList(Player player,
                                               int scrollOffset,
                                               boolean filterAffordableOnly,
                                               int maxEMC,
-                                              String searchText) {
+                                              String searchText,
+                                              Item templateItem) {
 
-        // Get ALL learned items
+        // Get all learned items
+        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
         List<Item> allLearnedItems = getLearnedItems(player);
         long playerBalance = EMCHelper.getBalance(player);
 
-        // Filter and build the display list
-        List<Item> displayList = new ArrayList<>();
+        // Separate items into categories for sorting
+        List<Item> favorites = new ArrayList<>();
+        List<Item> similarToTemplate = new ArrayList<>();
+        List<Item> others = new ArrayList<>();
 
         for (Item item : allLearnedItems) {
             long itemEMC = EMCHelper.getItemEMC(item).orElse(0L);
 
             // Filter 1: Check affordability
             if (filterAffordableOnly && playerBalance < itemEMC) {
-                continue; // Skip unaffordable items
+                continue;
             }
 
             // Filter 2: Check Neo Stone max EMC
-            if (maxEMC < itemEMC) {
-                if (!(item instanceof NeoStoneItem)) {
-                    continue; // Skip items above stone tier
-                }
+            if (maxEMC < itemEMC && !(item instanceof NeoStoneItem)) {
+                continue;
             }
 
             // Filter 3: Check search text match
             if (searchText != null && !searchText.isEmpty()) {
-                // Get the item's display name and convert to lowercase
                 String itemName = new ItemStack(item).getHoverName().getString().toLowerCase();
-                
-                // If the item name doesn't contain the search text, skip it
                 if (!itemName.contains(searchText)) {
-                    continue; // This item doesn't match the search
+                    continue;
                 }
             }
 
-            // Item passed all filters - add it to the display list!
-            displayList.add(item);
+            // Item passed all filters - now categorize it!
+
+            if (emcData.isFavorited(item)) {
+                // This is a favorite!
+                favorites.add(item);
+            } else if (templateItem != null && isSimilarTo(item, templateItem)) {
+                // This is similar to the template
+                similarToTemplate.add(item);
+            } else {
+                // Regular item
+                others.add(item);
+            }
         }
 
-        // Apply pagination offset (for scrolling in future)
+        // Sort each category by EMC (highest first)
+        sortByEMC(favorites);
+        sortByEMC(similarToTemplate);
+        sortByEMC(others);
+
+        // Combine in priority order
+        List<Item> combinedList = new ArrayList<>();
+        combinedList.addAll(favorites);           // Favorites first!
+        combinedList.addAll(similarToTemplate);   // Similar items next
+        combinedList.addAll(others);              // Everything else last
+
+        // Apply pagination (scrolling)
         int startIndex = scrollOffset * GRID_COLUMNS;
-        if (startIndex >= displayList.size()) {
-            // Scrolled past the end
-            return new ArrayList<>();
+        if (startIndex >= combinedList.size()) {
+            return new ArrayList<>();  // Scrolled past the end
         }
 
-        // Return just the visible portion
-        // For now, we show all (up to TOTAL_GRID_SLOTS items)
-        int endIndex = Math.min(startIndex + TOTAL_GRID_SLOTS, displayList.size());
-        displayList = displayList.subList(startIndex, endIndex);
+        int endIndex = Math.min(startIndex + TOTAL_GRID_SLOTS, combinedList.size());
+        return combinedList.subList(startIndex, endIndex);
+    }
 
-        return displayList;
+    /**
+     * Check if two items are "similar"
+     *
+     * Similarity criteria (in order of priority):
+     * 1. Exact same item → 100% similar
+     * 2. Same mod source (e.g., both from "minecraft") → Similar
+     * 3. Share item tags (e.g., both are "minecraft:planks") → Similar
+     * 4. Same item class (e.g., both SwordItem) → Somewhat similar
+     *
+     * @param item1 First item
+     * @param item2 Second item (template)
+     * @return true if items are similar
+     */
+    private static boolean isSimilarTo(Item item1, Item item2) {
+        // Same item?
+        if (item1 == item2) {
+            return true;
+        }
+
+        // Get resource locations
+        ResourceLocation id1 = BuiltInRegistries.ITEM.getKey(item1);
+        ResourceLocation id2 = BuiltInRegistries.ITEM.getKey(item2);
+
+        // Same mod? (e.g., both from "minecraft" or "neoexchange")
+        if (id1.getNamespace().equals(id2.getNamespace())) {
+            return true;
+        }
+
+        // Share any item tags?
+        // Example: Diamond Pickaxe and Iron Pickaxe both have tag "minecraft:pickaxes"
+        Set<net.minecraft.tags.TagKey<Item>> tags1 = getTags(item1);
+        Set<net.minecraft.tags.TagKey<Item>> tags2 = getTags(item2);
+
+        for (net.minecraft.tags.TagKey<Item> tag : tags1) {
+            if (tags2.contains(tag)) {
+                return true;  // Shared tag found!
+            }
+        }
+
+        // Same item class? (e.g., both are SwordItem)
+        if (item1.getClass() == item2.getClass()) {
+            return true;
+        }
+
+        return false;  // Not similar
+    }
+
+    /**
+     * Get all tags for an item (NeoForge 1.21.10 compatible)
+     *
+     * @param item The item to get tags for
+     * @return Set of tag keys this item belongs to
+     */
+    private static Set<net.minecraft.tags.TagKey<Item>> getTags(Item item) {
+        Set<net.minecraft.tags.TagKey<Item>> tags = new HashSet<>();
+
+        // Get the item's holder from the registry
+        net.minecraft.core.Holder<Item> holder = BuiltInRegistries.ITEM.wrapAsHolder(item);
+
+        // Get all tags this item belongs to
+        holder.tags().forEach(tags::add);
+
+        return tags;
+    }
+
+    /**
+     * Sort items by EMC value (highest first)
+     */
+    private static void sortByEMC(List<Item> items) {
+        items.sort((a, b) -> {
+            long emcA = EMCHelper.getItemEMC(a).orElse(0L);
+            long emcB = EMCHelper.getItemEMC(b).orElse(0L);
+            return Long.compare(emcB, emcA);  // Descending
+        });
     }
 
     // ========================================
@@ -197,7 +300,7 @@ public class NeoPlateMenuSlots {
     private static Slot createStoneSlot(IItemHandler inventory,
                                         Level level,
                                         SlotChangeCallback callback) {
-        return new SlotItemHandler(inventory, 0, 43, 49) {
+        return new SlotItemHandler(inventory, 0, 53, 47) {
             @Override
             public boolean mayPlace(ItemStack stack) {
                 return stack.is(ModTags.Items.USEABLE_STONES) ||
@@ -220,7 +323,29 @@ public class NeoPlateMenuSlots {
             Level level,
             SlotChangeCallback callback) {
 
-        return new SlotItemHandler(inventory, 1, 107, 97) {
+        return new SlotItemHandler(inventory, 1, 53, 97) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                return EMCRegistry.getInstance().hasEMC(stack.getItem());
+            }
+
+            @Override
+            public void setChanged() {
+                super.setChanged();
+                if (!level.isClientSide()) {
+                    ItemStack item = this.getItem();
+                    callback.onSlotChanged(item);
+                }
+            }
+        };
+    }
+
+    private static Slot createLearnSlot(
+            IItemHandler inventory,
+            Level level,
+            SlotChangeCallback callback) {
+
+        return new SlotItemHandler(inventory, 2, 71, 97) {
             @Override
             public boolean mayPlace(ItemStack stack) {
                 return EMCRegistry.getInstance().hasEMC(stack.getItem());
@@ -242,7 +367,7 @@ public class NeoPlateMenuSlots {
             Level level,
             SlotChangeCallback callback) {
 
-        return new SlotItemHandler(inventory, 2, 89, 97) {
+        return new SlotItemHandler(inventory, 3, 35, 97) {
             @Override
             public boolean mayPlace(ItemStack stack) {
                 return EMCRegistry.getItemsWithEMC().contains(stack.getItem());
@@ -324,5 +449,46 @@ public class NeoPlateMenuSlots {
 
     public static int getSlotSize() {
         return SLOT_SIZE;
+    }
+
+    /**
+     * Create the template slot - a special slot for filtering by similarity
+     *
+     * How it works:
+     * 1. Player places item in this slot
+     * 2. Item is automatically learned (without burning!)
+     * 3. Grid filters to show similar items first
+     *
+     * @param inventory The block entity's inventory
+     * @param level The game level
+     * @param callback Called when slot contents change
+     * @return The template slot
+     */
+    private static Slot createTemplateSlot(
+            IItemHandler inventory,
+            Level level,
+            SlotChangeCallback callback) {
+
+        return new SlotItemHandler(inventory, 4, 125, 49) {  // Position: 125, 49
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                // Allow any item that has EMC value
+                return EMCRegistry.getInstance().hasEMC(stack.getItem());
+            }
+
+            @Override
+            public void setChanged() {
+                super.setChanged();
+                if (!level.isClientSide()) {
+                    ItemStack item = this.getItem();
+                    callback.onSlotChanged(item);
+                }
+            }
+
+            @Override
+            public int getMaxStackSize() {
+                return 1;  // Only 1 item at a time
+            }
+        };
     }
 }

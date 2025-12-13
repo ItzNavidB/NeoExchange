@@ -65,6 +65,7 @@ public class NeoAttachments {
                                 return data;
                             })
                     ).fieldOf("player_emc_data"))  // <-- This is the key addition!
+                    .copyOnDeath()  // <-- CRITICAL: Copy this attachment when player dies!
                     .build()
     );
 
