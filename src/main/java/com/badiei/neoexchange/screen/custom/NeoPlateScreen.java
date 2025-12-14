@@ -3,32 +3,22 @@ package com.badiei.neoexchange.screen.custom;
 import com.badiei.neoexchange.NeoExchange;
 import com.badiei.neoexchange.config.ClientConfig;
 import com.badiei.neoexchange.emc.EMCHelper;
-import com.badiei.neoexchange.emc.EMCRegistry;
 import com.badiei.neoexchange.emc.PlayerEMCData;
-import com.badiei.neoexchange.items.NeoStoneItem;
-import com.badiei.neoexchange.network.CreateItemPacket;
 import com.mojang.logging.LogUtils;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.neoforged.neoforge.network.PacketDistributor;
 import org.slf4j.Logger;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
     private static final ResourceLocation GUI_TEXTURE = ResourceLocation.fromNamespaceAndPath(NeoExchange.MOD_ID, "textures/gui/neo_plate/neo_plate_gui.png");
@@ -45,12 +35,12 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
     private static final int SCROLLBAR_WIDTH = 12;
     private static final int SCROLLBAR_X_OFFSET = GRID_COLUMNS * SLOT_SIZE + 2;  // Right of grid
     private static final int SCROLLBAR_HEIGHT = GRID_ROWS * SLOT_SIZE;  // Height of grid
-    
+
     // Search bar widget
     private net.minecraft.client.gui.components.EditBox searchBox;
-    
+
     // Smooth scrolling
-    private float smoothScrollOffset = 1.0f;  // Current smooth position
+    private float smoothScrollOffset = 0.0f;  // Current smooth position
     private int targetScrollOffset = 0;        // Target discrete position
     private boolean isDraggingScrollbar = false;
     private int dragStartY = 0;
@@ -73,7 +63,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         // We'll place it above the virtual item grid
         int x = (width - imageWidth) / 2;  // Center the GUI
         int y = (height - imageHeight) / 2;
-        
+
         // Search box positioned above the grid
         int searchBoxX = x + GRID_START_X;
         int searchBoxY = y + GRID_START_Y - 14;  // 14 pixels above the grid
@@ -103,7 +93,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         // Add the widget to the screen so it gets rendered and handles input
         this.addRenderableWidget(searchBox);
 
-        LOGGER.info("Search box initialized at ({}, {}) with width {}", searchBoxX, searchBoxY, searchBoxWidth);
+        //LOGGER.info("Search box initialized at ({}, {}) with width {}", searchBoxX, searchBoxY, searchBoxWidth);      // Debug log
     }
 
     /**
@@ -113,12 +103,12 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
     private void onSearchTextChanged(String newText) {
         // Update client-side immediately for responsive UI
         menu.setSearchText(newText);
-        
+
         // Reset scroll position when search changes
         targetScrollOffset = 0;
         smoothScrollOffset = 0.0f;
         clientScrollOffset = 0;
-        
+
         // Send packet to server to sync the search filter
         // This prevents desync when clicking items!
         if (this.minecraft != null && this.minecraft.getConnection() != null) {
@@ -126,17 +116,17 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
                     new com.badiei.neoexchange.network.UpdateSearchTextPacket(newText)
             );
         }
-        
+
         // Update grid immediately
         updateClientVirtualSlots();
-        
+
         LOGGER.debug("Search text changed to: '{}' (synced to server)", newText);
     }
 
     /**
      * Override key pressed to prevent inventory key from closing GUI
      * when typing in the search box
-     * 
+     *
      * This is CRITICAL for good UX - without this, typing 'E' in the search
      * box would close your inventory!
      */
@@ -150,7 +140,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
             if (searchBox.keyPressed(keyEvent)) {
                 return true; // Search box handled it, we're done!
             }
-            
+
             // Special case: Don't let ESC or inventory key close the GUI
             // when the search box is focused (unless it's empty)
             if (searchBox.getValue().length() >= 0) {
@@ -161,7 +151,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
                 }
             }
         }
-        
+
         // Otherwise, let the parent handle it (for ESC, etc.)
         return super.keyPressed(keyEvent);
     }
@@ -171,14 +161,14 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         int x = (width - imageWidth) / 2;
         int y = (height - imageHeight) / 2;
         guiGraphics.blit(RenderPipelines.GUI_TEXTURED, GUI_TEXTURE, x, y, 0, 0, imageWidth, imageHeight, 256, 256);
-        
+
         // Grid background
         int gridSX = NeoPlateMenuSlots.getGridStartX() + x - 1;
         int gridSY = NeoPlateMenuSlots.getGridStartY() + y - 1;
         int gridWidth = NeoPlateMenuSlots.getGridColumns() * NeoPlateMenuSlots.getSlotSize() + gridSX;
         int gridHeight = NeoPlateMenuSlots.getGridRows() * NeoPlateMenuSlots.getSlotSize() + gridSY;
         guiGraphics.fill(gridSX, gridSY, gridWidth, gridHeight, 0x40000000);
-        
+
         // Render scrollbar
         renderScrollbar(guiGraphics, mouseX, mouseY);
     }
@@ -187,7 +177,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         // Update smooth scrolling animation
         updateSmoothScrolling(partialTick);
-        
+
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
         renderEMCInfo(guiGraphics, mouseX, mouseY, partialTick);
@@ -219,7 +209,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
                 balanceX + font.width("EMC: "), balanceY, 0xFFFFFF55, true);
 
         // === 2. EMC GAINED (Below balance, green) ===
-        if (menu.shouldDisplayEMCGained()) {
+        if (menu.shouldDisplayEMCGained() && menu.getLastEMCGained() > 0) {
             long gained = menu.getLastEMCGained();
             String gainedText = String.format("+%,d EMC", gained);
 
@@ -260,25 +250,25 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
 
             // Use scaling for smaller text
             guiGraphics.pose().pushMatrix();
-            
+
             // Calculate center position BEFORE scaling
             int centerX = x + (imageWidth / 2);
             int centerY = y + 82;
-            
+
             // Scale to 75% size for more compact text
-            float scale = 0.75f;
+            float scale = 1f;
             guiGraphics.pose().translate(centerX, centerY);
             guiGraphics.pose().scale(scale, scale);
-            
+
             // Line 1: "✦ Learned ✦"
             String line1 = "✦ Learned ✦";
             int line1X = -font.width(line1) / 2;  // Center relative to origin
             guiGraphics.drawString(font, line1, line1X, 0, color, true);
-            
+
             // Line 2: Item name
             int line2X = -font.width(itemName) / 2;  // Center relative to origin
             guiGraphics.drawString(font, itemName, line2X, 10, color, true);
-            
+
             guiGraphics.pose().popMatrix();
         }
 
@@ -292,23 +282,23 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
             int color = (alphaInt << 24) | 0xFF5555; // Red with alpha
 
             guiGraphics.pose().pushMatrix();
-            
+
             int centerX = x + (imageWidth / 2);
             int centerY = y + 82;
-            
+
             float scale = 0.75f;
             guiGraphics.pose().translate(centerX, centerY);
             guiGraphics.pose().scale(scale, scale);
-            
+
             // Line 1: "✦ Unlearned ✦"
             String line1 = "✦ Unlearned ✦";
             int line1X = -font.width(line1) / 2;
             guiGraphics.drawString(font, line1, line1X, 0, color, true);
-            
+
             // Line 2: Item name
             int line2X = -font.width(itemName) / 2;
             guiGraphics.drawString(font, itemName, line2X, 10, color, true);
-            
+
             guiGraphics.pose().popMatrix();
         }
 
@@ -319,8 +309,8 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         String maxEMCValue = EMCHelper.getStoneMaxEMCFormatted(stone);
         Component value = Component.literal(maxEMCValue).withStyle(ChatFormatting.YELLOW);
 
-        int emcX = x + (imageWidth / 2) - (font.width(text) / 2) - 61;
-        int emcY = y + 67;
+        int emcX = x + (imageWidth / 2) - (font.width(text) / 2) - NeoPlateMenuSlots.getStoneX();
+        int emcY = y + NeoPlateMenuSlots.getStoneY() + 20;
 
         guiGraphics.drawString(font, text, emcX, emcY, 0xFFFFFFFF, true);
         guiGraphics.drawString(font, value, emcX + 18 - font.width(value)/2, emcY + 10, 0xFFFFFFFF, true);
@@ -333,10 +323,10 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
     private void updateSmoothScrolling(float partialTick) {
         // Lerp factor - higher = faster scrolling (0.3 = 30% per frame)
         float lerpSpeed = 0.3f;
-        
+
         // Smoothly interpolate towards target
         float diff = targetScrollOffset - smoothScrollOffset;
-        
+
         if (Math.abs(diff) < 0.01f) {
             // Close enough, snap to target
             smoothScrollOffset = targetScrollOffset;
@@ -344,23 +334,23 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
             // Move towards target
             smoothScrollOffset += diff * lerpSpeed;
         }
-        
+
         // Update grid based on smooth scroll position
         int discreteOffset = Math.round(smoothScrollOffset);
         if (discreteOffset != clientScrollOffset) {
-            LOGGER.debug("Updating scroll: clientScrollOffset {} -> {}", clientScrollOffset, discreteOffset);
+            //LOGGER.debug("Updating scroll: clientScrollOffset {} -> {}", clientScrollOffset, discreteOffset);     // Debug log
             clientScrollOffset = discreteOffset;
-            
+
             // Update client menu and sync to server
             menu.setScrollOffset(discreteOffset);
-            
+
             // Send packet to server
             if (this.minecraft != null && this.minecraft.getConnection() != null) {
                 this.minecraft.getConnection().send(
                         new com.badiei.neoexchange.network.SyncScrollOffsetPacket(discreteOffset)
                 );
             }
-            
+
             // Update client visual display
             updateClientVirtualSlots();
         }
@@ -371,52 +361,57 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
      */
     private void renderScrollbar(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (this.minecraft == null || this.minecraft.player == null) return;
-        
+
         int x = (width - imageWidth) / 2;
         int y = (height - imageHeight) / 2;
-        
+
         // Calculate scrollbar position
         int scrollbarX = x + GRID_START_X + SCROLLBAR_X_OFFSET;
         int scrollbarY = y + GRID_START_Y;
-        
+
         // Calculate total scrollable rows
         PlayerEMCData emcData = EMCHelper.getPlayerEMC(this.minecraft.player);
-        int totalItems = emcData.getLearnedItems().size();
+        // Build display list CLIENT-SIDE
+        int size = NeoPlateMenuSlots.getDisplayListSize();
+        int totalItems = size;
+
         int totalRows = (int) Math.ceil((double) totalItems / GRID_COLUMNS);
         int maxScroll = Math.max(0, totalRows - GRID_ROWS);
-        
+
         if (maxScroll <= 0) {
             // Not enough items to scroll
             return;
         }
-        
+
         // Draw scrollbar track
         int trackColor = 0x80000000;  // Semi-transparent black
-        guiGraphics.fill(scrollbarX, scrollbarY, scrollbarX + SCROLLBAR_WIDTH, 
-                        scrollbarY + SCROLLBAR_HEIGHT, trackColor);
-        
+        guiGraphics.fill(scrollbarX, scrollbarY, scrollbarX + SCROLLBAR_WIDTH,
+                scrollbarY + SCROLLBAR_HEIGHT, trackColor);
+
         // Calculate scrollbar handle size and position
         float visibleRatio = (float) GRID_ROWS / totalRows;
         int handleHeight = Math.max(10, (int)(SCROLLBAR_HEIGHT * visibleRatio));
-        
+
         float scrollProgress = (float) smoothScrollOffset / maxScroll;
         int handleY = scrollbarY + (int)((SCROLLBAR_HEIGHT - handleHeight) * scrollProgress);
-        
+
         // Scrollbar handle color - brighter if hovering
         boolean hovering = mouseX >= scrollbarX && mouseX <= scrollbarX + SCROLLBAR_WIDTH &&
-                          mouseY >= scrollbarY && mouseY <= scrollbarY + SCROLLBAR_HEIGHT;
+                mouseY >= scrollbarY && mouseY <= scrollbarY + SCROLLBAR_HEIGHT;
         int handleColor = hovering || isDraggingScrollbar ? 0xFFAAAAAA : 0xFF888888;
-        
+
         // Draw scrollbar handle
-        guiGraphics.fill(scrollbarX + 1, handleY, scrollbarX + SCROLLBAR_WIDTH - 1, 
-                        handleY + handleHeight, handleColor);
-        
+        guiGraphics.fill(scrollbarX + 1, handleY, scrollbarX + SCROLLBAR_WIDTH - 1,
+                handleY + handleHeight, handleColor);
+
         // Draw scrollbar handle border
         int borderColor = 0xFF555555;
         guiGraphics.hLine(scrollbarX + 1, scrollbarX + SCROLLBAR_WIDTH - 2, handleY, borderColor);
         guiGraphics.hLine(scrollbarX + 1, scrollbarX + SCROLLBAR_WIDTH - 2, handleY + handleHeight - 1, borderColor);
         guiGraphics.vLine(scrollbarX + 1, handleY, handleY + handleHeight - 1, borderColor);
         guiGraphics.vLine(scrollbarX + SCROLLBAR_WIDTH - 1, handleY, handleY + handleHeight - 1, borderColor);
+
+        targetScrollOffset = Math.min(maxScroll, targetScrollOffset);
     }
 
     /**
@@ -424,9 +419,10 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
      */
     private int getMaxScrollOffset() {
         if (this.minecraft == null || this.minecraft.player == null) return 0;
-        
+
         PlayerEMCData emcData = EMCHelper.getPlayerEMC(this.minecraft.player);
-        int totalItems = emcData.getLearnedItems().size();
+        int size = NeoPlateMenuSlots.getDisplayListSize();
+        int totalItems = size;
         int totalRows = (int) Math.ceil((double) totalItems / GRID_COLUMNS);
         return Math.max(0, totalRows - GRID_ROWS);
     }
@@ -492,23 +488,23 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
             int y = (height - imageHeight) / 2;
             int scrollbarX = x + GRID_START_X + SCROLLBAR_X_OFFSET;
             int scrollbarY = y + GRID_START_Y;
-            
+
             if (mouseEvent.x() >= scrollbarX && mouseEvent.x() <= scrollbarX + SCROLLBAR_WIDTH &&
-                mouseEvent.y() >= scrollbarY && mouseEvent.y() <= scrollbarY + SCROLLBAR_HEIGHT) {
+                    mouseEvent.y() >= scrollbarY && mouseEvent.y() <= scrollbarY + SCROLLBAR_HEIGHT) {
                 // Clicked on scrollbar
                 isDraggingScrollbar = true;
                 dragStartY = (int) mouseEvent.y();
-                
+
                 // Jump to clicked position
                 int maxScroll = getMaxScrollOffset();
                 float clickProgress = (float)(mouseEvent.y() - scrollbarY) / SCROLLBAR_HEIGHT;
                 targetScrollOffset = Math.round(clickProgress * maxScroll);
                 targetScrollOffset = Math.max(0, Math.min(maxScroll, targetScrollOffset));
-                
+
                 return true;
             }
         }
-        
+
         // Original mouseClicked logic
         // Check if right-click (button 1) on the search box
         if (mouseEvent.button() == 1 && searchBox != null && searchBox.isMouseOver(mouseEvent.x(), mouseEvent.y())) {
@@ -544,7 +540,7 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
                 }
             }
         }
-        
+
         return super.mouseClicked(mouseEvent, hasBeenHandled);
     }
 
@@ -562,15 +558,20 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
             int x = (width - imageWidth) / 2;
             int y = (height - imageHeight) / 2;
             int scrollbarY = y + GRID_START_Y;
-            
+
             int maxScroll = getMaxScrollOffset();
+            if (targetScrollOffset > maxScroll) {
+                targetScrollOffset = maxScroll;
+                smoothScrollOffset = maxScroll;
+                clientScrollOffset = maxScroll;
+            }
             float dragProgress = (float)(mouseEvent.y() - scrollbarY) / SCROLLBAR_HEIGHT;
             targetScrollOffset = Math.round(dragProgress * maxScroll);
             targetScrollOffset = Math.max(0, Math.min(maxScroll, targetScrollOffset));
-            
+
             return true;
         }
-        
+
         return super.mouseDragged(mouseEvent, deltaX, deltaY);
     }
 
@@ -582,22 +583,20 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
      * - Server doesn't care about visual ordering
      * - Each client can have different scroll position!
      */
-    private void updateClientVirtualSlots() {
+    public void updateClientVirtualSlots() {
         if (this.minecraft == null || this.minecraft.player == null) return;
 
-        LOGGER.debug("updateClientVirtualSlots called with clientScrollOffset: {}", clientScrollOffset);
-
         // Build display list CLIENT-SIDE
+        // NOW it uses the clamped value!
         List<Item> displayList = NeoPlateMenuSlots.buildDisplayList(
                 this.minecraft.player,
                 clientScrollOffset,
-                menu.isFilterAffordableOnly(),  // Get from menu
+                menu.isFilterAffordableOnly(),
                 menu.getMaxEMC(),
                 menu.getSearchText(),
                 menu.getTemplateItem()
         );
 
-        LOGGER.debug("Built display list with {} items at offset {}", displayList.size(), clientScrollOffset);
 
         // Update visual slots
         int virtualSlotStart = menu.getVirtualSlotStartIndex();
@@ -614,6 +613,43 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
                 }
             }
         }
+    }
+
+    public void onVirtualSlotsRefreshed() {
+        LOGGER.info("=== REFRESH CALLED ===");
+        LOGGER.info("BEFORE - targetScrollOffset: {}", targetScrollOffset);
+        LOGGER.info("BEFORE - menu.getMaxEMC(): {}", menu.getMaxEMC());
+
+        // Count ALL filtered items (not just one page)
+        int totalFilteredItems = NeoPlateMenuSlots.buildDisplayListSize(
+                this.minecraft.player,
+                0,  // offset doesn't matter for size calculation
+                menu.isFilterAffordableOnly(),
+                menu.getMaxEMC(),
+                menu.getSearchText(),
+                menu.getTemplateItem()
+        );
+
+        LOGGER.info("AFTER - Total filtered items: {}", totalFilteredItems);
+
+        // Calculate max scroll based on ACTUAL item count
+        int totalRows = (int) Math.ceil((double) totalFilteredItems / GRID_COLUMNS);
+        int maxScroll = Math.max(0, totalRows - GRID_ROWS);
+
+        LOGGER.info("AFTER - Calculated maxScroll: {} (totalRows: {})", maxScroll, totalRows);
+
+        // Clamp scroll position
+        if (targetScrollOffset > maxScroll) {
+            LOGGER.info("CLAMPING: {} -> {}", targetScrollOffset, maxScroll);
+            targetScrollOffset = maxScroll;
+            smoothScrollOffset = (float) maxScroll;
+            clientScrollOffset = maxScroll;
+        }
+
+        // NOW update the display with the clamped scroll
+        updateClientVirtualSlots();
+
+        LOGGER.info("======================");
     }
 
     private int calculateClientAffordableAmount(Item item) {
@@ -669,10 +705,10 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
 
     /**
      * Render a star icon in the top-right corner of a slot
-     * 
+     *
      * This creates a small, bright star indicator that clearly shows
      * which items are favorited.
-     * 
+     *
      * @param guiGraphics The rendering context
      * @param slotX The X position of the slot
      * @param slotY The Y position of the slot
@@ -686,20 +722,19 @@ public class NeoPlateScreen extends AbstractContainerScreen<NeoPlateMenu> {
         // Option 1: Unicode star character ⭐
         // This is simple and works everywhere!
         String starSymbol = "⭐";
-        
+
         // Use the pose stack for transformations
         guiGraphics.pose().pushMatrix();
         guiGraphics.pose().translate(starX, starY);  // Move to position
         float scale = 0.75f;  // Scale to 75% size
         guiGraphics.pose().scale(scale, scale);
-        
+
         // Draw the star with a slight shadow for depth
         // Shadow first (offset, dark)
         guiGraphics.drawString(font, starSymbol, 1, 1, 0x88000000, false);  // Semi-transparent black
         // Star on top (gold)
         guiGraphics.drawString(font, starSymbol, 0, 0, 0xFFFFD700, false);  // Gold
-        
+
         guiGraphics.pose().popMatrix();
     }
 }
-

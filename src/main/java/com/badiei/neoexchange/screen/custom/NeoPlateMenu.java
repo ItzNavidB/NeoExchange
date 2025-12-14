@@ -11,6 +11,9 @@ import com.badiei.neoexchange.items.NeoItems;
 import com.badiei.neoexchange.items.NeoStoneItem;
 import com.badiei.neoexchange.network.SyncNeoPlateDataPacket;
 import com.badiei.neoexchange.screen.ModMenuTypes;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Items;
 import com.mojang.logging.LogUtils;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
@@ -124,8 +127,8 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         // Initial population of the virtual grid
         updateVirtualSlots();
 
-        LOGGER.info("NeoPlateMenu initialized with {} total slots ({} virtual slots starting at index {})",
-                this.slots.size(), virtualSlots.size(), virtualSlotStartIndex);
+        /*LOGGER.info("NeoPlateMenu initialized with {} total slots ({} virtual slots starting at index {})",
+                this.slots.size(), virtualSlots.size(), virtualSlotStartIndex);*/
     }
 
     // Slot indices constants
@@ -151,9 +154,9 @@ public class NeoPlateMenu extends AbstractContainerMenu {
 
     /**
      * Handle shift-clicking items
-     * 
+     *
      * This is called when a player shift-clicks a slot.
-     * 
+     *
      * Flow:
      * 1. Check what type of slot was clicked
      * 2. For virtual EMC slots: Buy items with EMC and add to inventory
@@ -164,14 +167,8 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         // If clicking a virtual slot, make sure server knows what item is there
         if (slotId >= 0 && slotId < slots.size()) {
             Slot slot = slots.get(slotId);
-            
-            if (slot instanceof VirtualEMCSlot virtualSlot) {
-                // Log what the server thinks is in this slot
-                LOGGER.info("Server processing click on virtual slot {}: currentItem={}",
-                        slotId, virtualSlot.getCurrentItem());
-            }
         }
-        
+
         // Let vanilla handle the click
         super.clicked(slotId, button, clickType, player);
     }
@@ -232,10 +229,10 @@ public class NeoPlateMenu extends AbstractContainerMenu {
 
     /**
      * Handle shift-clicking a virtual EMC slot
-     * 
+     *
      * This buys as many items as the player can afford and puts them
      * in their inventory.
-     * 
+     *
      * Flow:
      * 1. Calculate max affordable count
      * 2. Create item stack for that amount
@@ -243,7 +240,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
      * 4. Try to add to player inventory
      * 5. Handle any leftover items (refund EMC)
      * 6. Update displays
-     * 
+     *
      * @param player The player performing the shift-click
      * @param virtualSlot The virtual EMC slot that was clicked
      * @return ItemStack representing what was moved
@@ -379,29 +376,32 @@ public class NeoPlateMenu extends AbstractContainerMenu {
             previousEMCBalance = currentBalance;
             playerEMCBalance = currentBalance;
 
-            // ✨ THE MAGIC: Update the virtual grid when EMC changes
-            //updateVirtualSlots();
+            // FIX: Update server's grid when EMC changes
+            updateVirtualSlots();
+
+            // FIX: Tell client to refresh its grid too!
+            sendDataToClient(true);
+        } else {
+            // No EMC change, just send normal update
+            sendDataToClient(false);
         }
-
-        sendDataToClient();
     }
-
-    /**
+    /*
      * Update all virtual slots based on the current filtered/sorted item list
      *
-     * This is THE KEY METHOD in your new architecture!
-     *
-     * How it works:
-     * 1. Build a list of items to display (filtered, sorted)
+             * This is THE KEY METHOD in your new architecture!
+            *
+            * How it works:
+            * 1. Build a list of items to display (filtered, sorted)
      * 2. Map the list to the fixed grid of slots
      * 3. Tell each slot which item (if any) to display
      *
-     * Example with 5 items and 20 slots:
-     * - Slots 0-4 show the 5 items
+             * Example with 5 items and 20 slots:
+            * - Slots 0-4 show the 5 items
      * - Slots 5-19 are empty
      *
-     * When EMC increases and more items become affordable:
-     * - Rebuild the list (now 10 items)
+             * When EMC increases and more items become affordable:
+            * - Rebuild the list (now 10 items)
      * - Slots 0-9 show the 10 items
      * - Slots 10-19 are empty
      */
@@ -498,15 +498,16 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     public void setScrollOffset(int offset) {
         // Calculate maximum valid offset
         PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+
         int totalLearnedItems = emcData.getLearnedItems().size();
-        int totalRows = (int) Math.ceil((double) totalLearnedItems / NeoPlateMenuSlots.getGridColumns());
-        int maxOffset = Math.max(0, totalRows - NeoPlateMenuSlots.getGridRows() + 1);
+        int totalDisplayItems = NeoPlateMenuSlots.getDisplayListSize();
+        int totalRows = (int) Math.ceil((double) totalDisplayItems / NeoPlateMenuSlots.getGridColumns());
+        int maxOffset = Math.max(0, totalRows - NeoPlateMenuSlots.getGridRows());
 
         // Clamp to valid range
         this.scrollOffset = Math.max(0, Math.min(offset, maxOffset));
 
         updateVirtualSlots();
-        LOGGER.debug("Scroll offset set to: {} (max: {})", scrollOffset, maxOffset);
     }
 
     /**
@@ -545,7 +546,6 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         lastItemName3 = itemName;
         emcLostDisplayTimer = LOSTEMC_DISPLAY_DURATION;
 
-        LOGGER.info("Displaying EMC loss: {} EMC for {} x{}", amount, itemName, count);
         sendDataToClient();
     }
 
@@ -556,7 +556,6 @@ public class NeoPlateMenu extends AbstractContainerMenu {
 
         Optional<Long> emcValue = EMCHelper.getStackEMCWithDurability(stack);
         if (emcValue.isEmpty()) {
-            LOGGER.warn("Item {} in burner slot has no EMC value!", stack.getItem());
             return;
         }
 
@@ -598,8 +597,8 @@ public class NeoPlateMenu extends AbstractContainerMenu {
             return;
         }
 
-        LOGGER.info("Player {} changed Neo Stone to {}", player.getName().getString(), 
-                    stack.isEmpty() ? "EMPTY" : stack.getItem());
+        LOGGER.info("Player {} changed Neo Stone to {}", player.getName().getString(),
+                stack.isEmpty() ? "EMPTY" : stack.getItem());
 
         // Update the maxEMC based on the new stone
         NeoStoneType stoneType = NeoStoneType.COMMON;
@@ -610,7 +609,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
 
         // Update the virtual slots on the SERVER
         updateVirtualSlots();
-        
+
         // Tell client to refresh virtual slots
         sendDataToClient(true);
     }
@@ -628,16 +627,22 @@ public class NeoPlateMenu extends AbstractContainerMenu {
             return;
         }
 
-        emcData.learnItem(item);
+        boolean sucess = emcData.learnItem(item);
+        if (sucess) {
+            emcGainedDisplayTimer = EMC_DISPLAY_DURATION;
+            lastEMCGained = 0; // No EMC gained when learning via slot
+            lastItemWasNew = sucess;
+            lastItemName = stack.getHoverName().getString();
+        }
         EMCHelper.syncLearnedItems(player);
 
         // An item was learned, update the grid!
         updateVirtualSlots();
-        
+
         // Tell client to refresh
         sendDataToClient(true);
 
-        LOGGER.info("Player {} learned {}", player.getName().getString(), item);
+        LOGGER.info("Player {} learned {} and gained no EMC", player.getName().getString(), item);
     }
 
     private void processUnlearnSlot(ItemStack stack) {
@@ -661,7 +666,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
 
         // An item was unlearned, update the grid!
         updateVirtualSlots();
-        
+
         // Tell client to refresh
         sendDataToClient(true);
 
@@ -704,6 +709,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         // Update grid SERVER-SIDE
         // (Client will get slot changes via normal container sync)
         updateVirtualSlots();
+        sendDataToClient(true);
     }
 
     @Override
@@ -742,7 +748,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     public String getLastItemName2() { return lastItemName2; }
     public String getLastItemName3() { return lastItemName3; }
     public boolean shouldDisplayEMCGained() {
-            return emcGainedDisplayTimer > 0;
+        return emcGainedDisplayTimer > 0;
     }
     public boolean shouldDisplayEMCLost() {
         return emcLostDisplayTimer > 0;
@@ -771,7 +777,9 @@ public class NeoPlateMenu extends AbstractContainerMenu {
 
     public void receiveDataFromServer(long emc, long gained, long lost, boolean wasNew,
                                       String name, String name2, String name3,
-                                      int timer, int uTimer, int lTimer) {
+                                      int timer, int uTimer, int lTimer,
+                                      boolean refreshVirtualSlots, int maxEMC,
+                                      String templateItemId) {
         this.playerEMCBalance = emc;
         this.lastEMCGained = gained;
         this.lastEMCLost = lost;  // ✨ ADDED
@@ -781,6 +789,19 @@ public class NeoPlateMenu extends AbstractContainerMenu {
         this.lastItemName3 = name3;  // ✨ ADDED
         this.emcGainedDisplayTimer = timer;
         this.unlearnDisplayTimer = uTimer;
+
+        // NEW: Sync template item from server
+        if (templateItemId.isEmpty()) {
+            this.templateItem = null;
+        } else {
+            ResourceLocation itemId = ResourceLocation.parse(templateItemId);
+            this.templateItem = BuiltInRegistries.ITEM.getValue(itemId);
+        }
+
+        // If server requested refresh AND we're on client side
+        if (level.isClientSide() && refreshVirtualSlots) {
+            updateVirtualSlots();
+        }
         this.emcLostDisplayTimer = lTimer;  // ✨ ADDED
 
         // ❌ DO NOT call updateVirtualSlots() here!
@@ -789,9 +810,9 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     }
 
     private void sendDataToClient() {
-        sendDataToClient(false);  // Default: don't refresh virtual slots
+        sendDataToClient(false);
     }
-    
+
     private void sendDataToClient(boolean refreshVirtualSlots) {
         if (player instanceof ServerPlayer serverPlayer) {
             SyncNeoPlateDataPacket packet = new SyncNeoPlateDataPacket(
@@ -805,7 +826,9 @@ public class NeoPlateMenu extends AbstractContainerMenu {
                     emcGainedDisplayTimer,
                     unlearnDisplayTimer,
                     emcLostDisplayTimer,
-                    refreshVirtualSlots  // NEW: Tell client whether to refresh
+                    refreshVirtualSlots,
+                    maxEMC,
+                    getTemplateItemIdForSync()
             );
             PacketDistributor.sendToPlayer(serverPlayer, packet);
         }
@@ -830,6 +853,19 @@ public class NeoPlateMenu extends AbstractContainerMenu {
     }
 
 
+    /**
+     * Get the template item ID as a string for syncing to client
+     *
+     * @return ResourceLocation string like "minecraft:diamond", or "" if no template
+     */
+    private String getTemplateItemIdForSync() {
+        if (templateItem == null || templateItem == Items.AIR) {
+            return "";
+        }
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(templateItem);
+        return itemId.toString();
+    }
+
     public Item getTemplateItem() {
         return templateItem;
     }
@@ -840,7 +876,7 @@ public class NeoPlateMenu extends AbstractContainerMenu {
      */
     public void onLearnedItemsUpdated() {
         if (level.isClientSide()) {
-            updateVirtualSlots();
+            //updateVirtualSlots();
             LOGGER.debug("Client-side virtual slots refreshed after learned items sync");
         }
     }

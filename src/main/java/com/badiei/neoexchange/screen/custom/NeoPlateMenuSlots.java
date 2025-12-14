@@ -10,7 +10,6 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -45,6 +44,8 @@ public class NeoPlateMenuSlots {
     private static final int GRID_ROWS = 5;  // How many rows to show
     private static final int SLOT_SIZE = 18;
 
+    private static int DISPLAY_LIST_SIZE = 0;
+
     // Total slots in the grid
     private static final int TOTAL_GRID_SLOTS = GRID_COLUMNS * GRID_ROWS;  // 20 slots
 
@@ -78,7 +79,6 @@ public class NeoPlateMenuSlots {
         // Slot 4: Template slot
         slots.add(createTemplateSlot(inventory, level, templateCallback));
 
-        LOGGER.debug("Created 4 fixed slots for Neo Plate menu");
         return slots;
     }
 
@@ -99,7 +99,7 @@ public class NeoPlateMenuSlots {
     public static List<Slot> createVirtualSlots(Player player, Level level) {
         List<Slot> slots = new ArrayList<>();
 
-        LOGGER.info("Creating fixed grid of {} virtual slots", TOTAL_GRID_SLOTS);
+        //LOGGER.info("Creating fixed grid of {} virtual slots", TOTAL_GRID_SLOTS);     // Debug log
 
         // Create a fixed grid of slots
         for (int i = 0; i < TOTAL_GRID_SLOTS; i++) {
@@ -109,15 +109,16 @@ public class NeoPlateMenuSlots {
             int x = GRID_START_X + (col * SLOT_SIZE);
             int y = GRID_START_Y + (row * SLOT_SIZE);
 
+
             // Create an empty virtual slot
             // The slot knows its index (0-19) but starts with no item
             slots.add(new VirtualEMCSlot(player, i, x, y));
         }
 
-        LOGGER.info("Created {} virtual EMC slots for player {} on {}",
+        /*LOGGER.info("Created {} virtual EMC slots for player {} on {}",
                 slots.size(),
                 player.getName().getString(),
-                level.isClientSide() ? "CLIENT" : "SERVER");
+                level.isClientSide() ? "CLIENT" : "SERVER");*/      // Debug log
 
         return slots;
     }
@@ -126,15 +127,17 @@ public class NeoPlateMenuSlots {
      * Build the list of items to display in the virtual grid
      *
      * NEW FEATURES:
-     * - Favorites appear first (gold star icon)
-     * - Template filter shows similar items next
+     * - Template item appears FIRST (if affordable)
+     * - Favorites appear second (gold star icon)
+     * - Similar items appear third
      * - Search still works
      * - Scrolling pages through results
      *
      * Sorting priority:
-     * 1. Favorited items (by EMC, highest first)
-     * 2. Items similar to template (by similarity score)
-     * 3. All other learned items (by EMC, highest first)
+     * 1. Template item itself (always first if it exists!)
+     * 2. Favorited items (by EMC, highest first)
+     * 3. Items similar to template (by similarity score)
+     * 4. All other learned items (by EMC, highest first)
      *
      * @param player The player
      * @param scrollOffset Row offset for pagination (0 = first page)
@@ -157,6 +160,7 @@ public class NeoPlateMenuSlots {
         long playerBalance = EMCHelper.getBalance(player);
 
         // Separate items into categories for sorting
+        Item exactTemplateMatch = null;  // NEW: Track the exact template item
         List<Item> favorites = new ArrayList<>();
         List<Item> similarToTemplate = new ArrayList<>();
         List<Item> others = new ArrayList<>();
@@ -184,6 +188,12 @@ public class NeoPlateMenuSlots {
 
             // Item passed all filters - now categorize it!
 
+            // NEW: Check if this is the EXACT template item
+            if (templateItem != null && item == templateItem) {
+                exactTemplateMatch = item;  // Save it for first position!
+                continue;  // Don't add to other lists yet
+            }
+
             if (emcData.isFavorited(item)) {
                 // This is a favorite!
                 favorites.add(item);
@@ -203,8 +213,14 @@ public class NeoPlateMenuSlots {
 
         // Combine in priority order
         List<Item> combinedList = new ArrayList<>();
-        combinedList.addAll(favorites);           // Favorites first!
-        combinedList.addAll(similarToTemplate);   // Similar items next
+        
+        // NEW: Template item goes FIRST if it exists and player can afford it!
+        if (exactTemplateMatch != null) {
+            combinedList.add(exactTemplateMatch);
+        }
+        
+        combinedList.addAll(favorites);           // Favorites second
+        combinedList.addAll(similarToTemplate);   // Similar items third
         combinedList.addAll(others);              // Everything else last
 
         // Apply pagination (scrolling)
@@ -213,8 +229,99 @@ public class NeoPlateMenuSlots {
             return new ArrayList<>();  // Scrolled past the end
         }
 
+        DISPLAY_LIST_SIZE = combinedList.size();
         int endIndex = Math.min(startIndex + TOTAL_GRID_SLOTS, combinedList.size());
         return combinedList.subList(startIndex, endIndex);
+    }
+
+    public static int getDisplayListSize() {
+        return DISPLAY_LIST_SIZE;
+    }
+
+
+    public static int buildDisplayListSize(Player player,
+                                                  int scrollOffset,
+                                                  boolean filterAffordableOnly,
+                                                  int maxEMC,
+                                                  String searchText,
+                                                  Item templateItem) {
+
+        // Get all learned items
+        PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+        List<Item> allLearnedItems = getLearnedItems(player);
+        long playerBalance = EMCHelper.getBalance(player);
+
+        // Separate items into categories for sorting
+        Item exactTemplateMatch = null;  // NEW: Track the exact template item
+        List<Item> favorites = new ArrayList<>();
+        List<Item> similarToTemplate = new ArrayList<>();
+        List<Item> others = new ArrayList<>();
+
+        for (Item item : allLearnedItems) {
+            long itemEMC = EMCHelper.getItemEMC(item).orElse(0L);
+
+            // Filter 1: Check affordability
+            if (filterAffordableOnly && playerBalance < itemEMC) {
+                continue;
+            }
+
+            // Filter 2: Check Neo Stone max EMC
+            if (maxEMC < itemEMC && !(item instanceof NeoStoneItem)) {
+                continue;
+            }
+
+            // Filter 3: Check search text match
+            if (searchText != null && !searchText.isEmpty()) {
+                String itemName = new ItemStack(item).getHoverName().getString().toLowerCase();
+                if (!itemName.contains(searchText)) {
+                    continue;
+                }
+            }
+
+            // Item passed all filters - now categorize it!
+
+            // NEW: Check if this is the EXACT template item
+            if (templateItem != null && item == templateItem) {
+                exactTemplateMatch = item;  // Save it for first position!
+                continue;  // Don't add to other lists yet
+            }
+
+            if (emcData.isFavorited(item)) {
+                // This is a favorite!
+                favorites.add(item);
+            } else if (templateItem != null && isSimilarTo(item, templateItem)) {
+                // This is similar to the template
+                similarToTemplate.add(item);
+            } else {
+                // Regular item
+                others.add(item);
+            }
+        }
+
+        // Sort each category by EMC (highest first)
+        sortByEMC(favorites);
+        sortByEMC(similarToTemplate);
+        sortByEMC(others);
+
+        // Combine in priority order
+        List<Item> combinedList = new ArrayList<>();
+        
+        // NEW: Template item goes FIRST if it exists!
+        if (exactTemplateMatch != null) {
+            combinedList.add(exactTemplateMatch);
+        }
+        
+        combinedList.addAll(favorites);           // Favorites second
+        combinedList.addAll(similarToTemplate);   // Similar items third
+        combinedList.addAll(others);              // Everything else last
+
+        // Apply pagination (scrolling)
+        int startIndex = scrollOffset * GRID_COLUMNS;
+        if (startIndex >= combinedList.size()) {
+            return 0;  // Scrolled past the end
+        }
+
+        return combinedList.size();
     }
 
     /**
@@ -297,14 +404,16 @@ public class NeoPlateMenuSlots {
     // Private helper methods
     // ========================================
 
+    public static int getStoneX() {return 53;}
+    public static int getStoneY() {return 47;}
+
     private static Slot createStoneSlot(IItemHandler inventory,
                                         Level level,
                                         SlotChangeCallback callback) {
-        return new SlotItemHandler(inventory, 0, 53, 47) {
+        return new SlotItemHandler(inventory, 0, getStoneX(), getStoneY()) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                return stack.is(ModTags.Items.USEABLE_STONES) ||
-                        stack.getItem().equals(NeoItems.NEO_STONE.asItem());
+                return stack.is(ModTags.Items.USEABLE_STONES);
             }
 
             @Override
@@ -384,6 +493,34 @@ public class NeoPlateMenuSlots {
         };
     }
 
+    private static Slot createTemplateSlot(
+            IItemHandler inventory,
+            Level level,
+            SlotChangeCallback callback) {
+
+        return new SlotItemHandler(inventory, 4, 125, 49) {  // Position: 125, 49
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                // Allow any item that has EMC value
+                return EMCRegistry.getInstance().hasEMC(stack.getItem());
+            }
+
+            @Override
+            public void setChanged() {
+                super.setChanged();
+                if (!level.isClientSide()) {
+                    ItemStack item = this.getItem();
+                    callback.onSlotChanged(item);
+                }
+            }
+
+            @Override
+            public int getMaxStackSize() {
+                return 1;  // Only 1 item at a time
+            }
+        };
+    }
+
     /**
      * Get list of ALL learned items for the player, sorted by EMC value
      *
@@ -457,38 +594,12 @@ public class NeoPlateMenuSlots {
      * How it works:
      * 1. Player places item in this slot
      * 2. Item is automatically learned (without burning!)
-     * 3. Grid filters to show similar items first
+     * 3. Grid sorts to show template item FIRST, then similar items
      *
      * @param inventory The block entity's inventory
      * @param level The game level
      * @param callback Called when slot contents change
      * @return The template slot
      */
-    private static Slot createTemplateSlot(
-            IItemHandler inventory,
-            Level level,
-            SlotChangeCallback callback) {
 
-        return new SlotItemHandler(inventory, 4, 125, 49) {  // Position: 125, 49
-            @Override
-            public boolean mayPlace(ItemStack stack) {
-                // Allow any item that has EMC value
-                return EMCRegistry.getInstance().hasEMC(stack.getItem());
-            }
-
-            @Override
-            public void setChanged() {
-                super.setChanged();
-                if (!level.isClientSide()) {
-                    ItemStack item = this.getItem();
-                    callback.onSlotChanged(item);
-                }
-            }
-
-            @Override
-            public int getMaxStackSize() {
-                return 1;  // Only 1 item at a time
-            }
-        };
-    }
 }

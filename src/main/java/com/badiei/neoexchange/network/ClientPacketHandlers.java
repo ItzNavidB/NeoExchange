@@ -4,6 +4,7 @@ import com.badiei.neoexchange.NeoExchange;
 import com.badiei.neoexchange.emc.EMCHelper;
 import com.badiei.neoexchange.emc.PlayerEMCData;
 import com.badiei.neoexchange.screen.custom.NeoPlateMenu;
+import com.badiei.neoexchange.screen.custom.NeoPlateScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -15,11 +16,11 @@ import net.neoforged.api.distmarker.OnlyIn;
 
 /**
  * ClientPacketHandlers - Handles all client-side packet processing
- * 
+ *
  * This class is ONLY loaded on the client side. By isolating all
  * client-specific code here, we prevent the server from trying to
  * load classes like LocalPlayer which don't exist server-side.
- * 
+ *
  * The @OnlyIn annotation is optional but makes the intent crystal clear.
  */
 //@OnlyIn(Dist.CLIENT)
@@ -33,6 +34,9 @@ public class ClientPacketHandlers {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             PlayerEMCData emcData = EMCHelper.getPlayerEMC(player);
+
+            // Store old EMC to detect changes
+            long oldEMC = emcData.getEMC();
 
             // Update EMC balance
             emcData.setEMC(packet.currentEMC());
@@ -68,6 +72,17 @@ public class ClientPacketHandlers {
             // If the player has a NeoPlate menu open, refresh it!
             if (player.containerMenu instanceof NeoPlateMenu menu) {
                 menu.onLearnedItemsUpdated();
+
+                // NEW: If EMC changed, update the grid too!
+                // This is needed because affordable amounts change with EMC
+                if (oldEMC != packet.currentEMC()) {
+                    // Tell the screen to update client-side
+                    if (Minecraft.getInstance().screen instanceof NeoPlateScreen screen) {
+                        screen.updateClientVirtualSlots();
+                        NeoExchange.LOGGER.debug("Grid updated due to EMC change: {} -> {}",
+                                oldEMC, packet.currentEMC());
+                    }
+                }
             }
 
             NeoExchange.LOGGER.debug("Client synced: {} EMC, {} learned items, {} favorites",
@@ -80,27 +95,40 @@ public class ClientPacketHandlers {
     /**
      * Handle SyncNeoPlateDataPacket on client
      * Updates the NeoPlate menu with server data
+     *
+     * CRITICAL FIX: This now passes ALL parameters including the new ones!
      */
     public static void handleSyncNeoPlateData(SyncNeoPlateDataPacket packet) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null && player.containerMenu instanceof NeoPlateMenu menu) {
+            // FIXED: Pass ALL 13 parameters (was only passing 10!)
             menu.receiveDataFromServer(
-                    packet.playerEMC(),
-                    packet.lastEMCGained(),
-                    packet.lastEMCLost(),
-                    packet.wasNew(),
-                    packet.itemName(),
-                    packet.itemName2(),
-                    packet.itemName3(),
-                    packet.displayTimer(),
-                    packet.UdisplayTimer(),
-                    packet.LdisplayTimer()
+                    packet.playerEMC(),           // 1
+                    packet.lastEMCGained(),       // 2
+                    packet.lastEMCLost(),         // 3
+                    packet.wasNew(),              // 4
+                    packet.itemName(),            // 5
+                    packet.itemName2(),           // 6
+                    packet.itemName3(),           // 7
+                    packet.displayTimer(),        // 8
+                    packet.UdisplayTimer(),       // 9
+                    packet.LdisplayTimer(),       // 10
+                    packet.refreshVirtualSlots(), // 11 - MISSING BEFORE!
+                    packet.maxEMC(),              // 12 - MISSING BEFORE!
+                    packet.templateItemId()       // 13 - NEW!
             );
-            
-            // NEW: Check if we need to refresh virtual slots
+
+            // The menu.receiveDataFromServer() will handle updating virtual slots
+            // if refreshVirtualSlots is true. But we ALSO need to update the
+            // client-side screen for smooth scrolling and display!
+
             if (packet.refreshVirtualSlots()) {
-                menu.updateVirtualSlots();
-                NeoExchange.LOGGER.debug("Client refreshed virtual slots");
+                NeoExchange.LOGGER.debug("Client refreshing virtual slots (server requested)");
+
+                // Tell the screen to refresh client-side display
+                if (Minecraft.getInstance().screen instanceof NeoPlateScreen screen) {
+                    screen.onVirtualSlotsRefreshed();
+                }
             }
         }
     }

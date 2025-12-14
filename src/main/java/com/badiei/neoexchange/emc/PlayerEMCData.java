@@ -240,10 +240,11 @@ public class PlayerEMCData {
         return learnedItems.contains(itemId);
     }
 
-    public void learnItem(Item item) {
+    public boolean learnItem(Item item) {
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
-        if (learnedItems.contains(itemId)) {return;}
+        if (learnedItems.contains(itemId)) {return false;}
         learnedItems.add(itemId);
+        return true;
         // NOTE: Syncing is handled by the caller (EMCHelper methods)
         // We don't sync here because this method is called during deserialization
         // when no player/client is available

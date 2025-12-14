@@ -127,7 +127,7 @@ public class VirtualEMCSlot extends Slot {
         this.setChanged();
 
         if (itemChanged) {
-            LOGGER.debug("Slot {} now displays {} x{}, of {}", listIndex, item, amount, item.getDefaultMaxStackSize());
+            //LOGGER.debug("Slot {} now displays {} x{}, of {}", listIndex, item, amount, item.getDefaultMaxStackSize());       // Debug log
         }
     }
 
@@ -191,9 +191,6 @@ public class VirtualEMCSlot extends Slot {
 
         // Process the EMC transaction and get result
         PurchaseResult result = processEMCPurchaseWithResult(player, stack);
-        
-        LOGGER.info("Purchase result: success={}, emcSpent={}, count={}",
-                result.success, result.emcSpent, result.itemCount);
 
         // Notify menu if we have a callback (for EMC loss display)
         if (result.success && emcSpentCallback != null && !player.level().isClientSide()) {

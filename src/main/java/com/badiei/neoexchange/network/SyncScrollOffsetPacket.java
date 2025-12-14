@@ -48,8 +48,6 @@ public record SyncScrollOffsetPacket(int scrollOffset) implements CustomPacketPa
         context.enqueueWork(() -> {
             // Update the server's menu scroll offset
             if (player.containerMenu instanceof NeoPlateMenu menu) {
-                LOGGER.debug("Syncing scroll offset to {} for player {}", 
-                        packet.scrollOffset, player.getName().getString());
                 
                 menu.setScrollOffset(packet.scrollOffset);
             }
